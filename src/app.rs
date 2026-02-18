@@ -21,6 +21,12 @@ enum Mode {
     Detail,
 }
 
+#[derive(PartialEq)]
+enum Focus {
+    Table,
+    Detail,
+}
+
 pub struct App {
     all_books: Vec<Book>,
     filtered_books: Vec<Book>,
@@ -30,6 +36,7 @@ pub struct App {
     search_query: String,
     detail: Option<Metadata>,
     detail_scroll: u16,
+    focus: Focus,
     table_area: Rect,
     detail_area: Rect,
 }
@@ -50,6 +57,7 @@ impl App {
             search_query: String::new(),
             detail: None,
             detail_scroll: 0,
+            focus: Focus::Table,
             table_area: Rect::default(),
             detail_area: Rect::default(),
         }
@@ -116,16 +124,35 @@ impl App {
                 _ => {}
             },
             Mode::Detail => match code {
-                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                KeyCode::Esc | KeyCode::Char('q') => {
                     self.mode = Mode::Normal;
                     self.detail = None;
                     self.detail_scroll = 0;
+                    self.focus = Focus::Table;
                 }
-                KeyCode::Down | KeyCode::Char('s') => {
-                    self.detail_scroll = self.detail_scroll.saturating_add(1);
-                }
-                KeyCode::Up | KeyCode::Char('w') => {
-                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                KeyCode::Left | KeyCode::Char('a') => self.focus = Focus::Table,
+                KeyCode::Right | KeyCode::Char('d') => self.focus = Focus::Detail,
+                KeyCode::Down | KeyCode::Char('s') => match self.focus {
+                    Focus::Table => self.next(),
+                    Focus::Detail => {
+                        self.detail_scroll = self.detail_scroll.saturating_add(1);
+                    }
+                },
+                KeyCode::Up | KeyCode::Char('w') => match self.focus {
+                    Focus::Table => self.previous(),
+                    Focus::Detail => {
+                        self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                    }
+                },
+                KeyCode::Enter => {
+                    if self.focus == Focus::Table {
+                        self.open_detail();
+                    } else {
+                        self.mode = Mode::Normal;
+                        self.detail = None;
+                        self.detail_scroll = 0;
+                        self.focus = Focus::Table;
+                    }
                 }
                 _ => {}
             },
@@ -146,27 +173,29 @@ impl App {
     }
 
     fn handle_click(&mut self, col: u16, row: u16) {
-        // Check if click is within the table area
-        let area = self.table_area;
-        if col < area.x || col >= area.x + area.width || row < area.y || row >= area.y + area.height
+        if Self::is_in_area(col, row, self.table_area) {
+            self.focus = Focus::Table;
+
+            let area = self.table_area;
+            // Account for border (1) + header (1) + header bottom_margin (1) = 3 rows offset
+            let content_start = area.y + 3;
+            if row < content_start {
+                return;
+            }
+
+            let clicked_row = (row - content_start) as usize;
+            let offset = self.table_state.offset();
+            let idx = offset + clicked_row;
+
+            if idx < self.filtered_books.len() {
+                self.table_state.select(Some(idx));
+                self.scrollbar_state = self.scrollbar_state.position(idx);
+                self.open_detail();
+            }
+        } else if matches!(self.mode, Mode::Detail)
+            && Self::is_in_area(col, row, self.detail_area)
         {
-            return;
-        }
-
-        // Account for border (1) + header (1) + header bottom_margin (1) = 3 rows offset
-        let content_start = area.y + 3;
-        if row < content_start {
-            return;
-        }
-
-        let clicked_row = (row - content_start) as usize;
-        let offset = self.table_state.offset();
-        let idx = offset + clicked_row;
-
-        if idx < self.filtered_books.len() {
-            self.table_state.select(Some(idx));
-            self.scrollbar_state = self.scrollbar_state.position(idx);
-            self.open_detail();
+            self.focus = Focus::Detail;
         }
     }
 
@@ -306,9 +335,20 @@ impl App {
             )
         };
 
+        let border_style = if matches!(self.mode, Mode::Detail) && self.focus == Focus::Table {
+            Style::new().fg(Color::LightBlue)
+        } else {
+            Style::default()
+        };
+
         let table = Table::new(rows, widths)
             .header(header)
-            .block(Block::default().title(title).borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(border_style),
+            )
             .row_highlight_style(
                 Style::new()
                     .bg(Color::DarkGray)
@@ -332,8 +372,18 @@ impl App {
 
     fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
         self.detail_area = area;
+
+        let border_style = if self.focus == Focus::Detail {
+            Style::new().fg(Color::LightBlue)
+        } else {
+            Style::default()
+        };
+
         let Some(meta) = &self.detail else {
-            let block = Block::default().title(" Detail ").borders(Borders::ALL);
+            let block = Block::default()
+                .title(" Detail ")
+                .borders(Borders::ALL)
+                .border_style(border_style);
             frame.render_widget(Paragraph::new("No metadata found.").block(block), area);
             return;
         };
@@ -448,7 +498,10 @@ impl App {
             }
         }
 
-        let block = Block::default().title(" Detail ").borders(Borders::ALL);
+        let block = Block::default()
+            .title(" Detail ")
+            .borders(Borders::ALL)
+            .border_style(border_style);
 
         let paragraph = Paragraph::new(lines)
             .block(block)
@@ -466,19 +519,21 @@ impl App {
                 Span::styled("█", Style::new().fg(Color::Yellow)),
             ]),
             Mode::Detail => Line::from(vec![
-                Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
+                Span::styled(" ←", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("→", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" focus  "),
+                Span::styled("w", Style::new().fg(Color::Yellow).bold()),
                 Span::raw("/"),
                 Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" scroll up  "),
+                Span::raw(" up  "),
                 Span::styled("s", Style::new().fg(Color::Yellow).bold()),
                 Span::raw("/"),
                 Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" scroll down  "),
+                Span::raw(" down  "),
                 Span::styled("q", Style::new().fg(Color::Yellow).bold()),
                 Span::raw("/"),
                 Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" close"),
             ]),
             Mode::Normal => Line::from(vec![
