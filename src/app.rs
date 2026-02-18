@@ -3,21 +3,18 @@ use std::io;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Margin, Rect},
-    style::{Color, Modifier, Style, Stylize},
-    text::{Line, Span},
-    widgets::{
-        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState, Wrap,
-    },
+    layout::{Constraint, Layout, Rect},
+    widgets::{ScrollbarState, TableState},
 };
 
 use rulibre::config;
-use rulibre::converter;
 use rulibre::metadata::{self, Metadata};
 use rulibre::scanner::{self, Book};
 
-enum Mode {
+use crate::views;
+
+#[derive(PartialEq)]
+pub(crate) enum Mode {
     Setup,
     Normal,
     Search,
@@ -26,29 +23,29 @@ enum Mode {
 }
 
 #[derive(PartialEq)]
-enum Focus {
+pub(crate) enum Focus {
     Table,
     Detail,
 }
 
 pub struct App {
-    all_books: Vec<Book>,
-    filtered_books: Vec<Book>,
-    table_state: TableState,
-    scrollbar_state: ScrollbarState,
-    mode: Mode,
-    search_query: String,
-    detail: Option<Metadata>,
-    detail_scroll: u16,
-    focus: Focus,
-    table_area: Rect,
-    detail_area: Rect,
-    setup_input: String,
-    setup_error: String,
-    convert_targets: Vec<(String, String)>,
-    convert_selected: usize,
-    convert_message: String,
-    convert_is_error: bool,
+    pub(crate) all_books: Vec<Book>,
+    pub(crate) filtered_books: Vec<Book>,
+    pub(crate) table_state: TableState,
+    pub(crate) scrollbar_state: ScrollbarState,
+    pub(crate) mode: Mode,
+    pub(crate) search_query: String,
+    pub(crate) detail: Option<Metadata>,
+    pub(crate) detail_scroll: u16,
+    pub(crate) focus: Focus,
+    pub(crate) table_area: Rect,
+    pub(crate) detail_area: Rect,
+    pub(crate) setup_input: String,
+    pub(crate) setup_error: String,
+    pub(crate) convert_targets: Vec<(String, String)>,
+    pub(crate) convert_selected: usize,
+    pub(crate) convert_message: String,
+    pub(crate) convert_is_error: bool,
 }
 
 impl App {
@@ -133,47 +130,6 @@ impl App {
     /// Returns `true` if the app should quit.
     fn handle_key(&mut self, code: KeyCode) -> bool {
         match self.mode {
-            Mode::Setup => match code {
-                KeyCode::Esc => return true,
-                KeyCode::Backspace => {
-                    self.setup_input.pop();
-                    self.setup_error.clear();
-                }
-                KeyCode::Char(c) => {
-                    self.setup_input.push(c);
-                    self.setup_error.clear();
-                }
-                KeyCode::Enter => {
-                    let path = config::sanitize_path(&self.setup_input);
-                    if path.is_empty() {
-                        self.setup_error = "No path provided.".to_string();
-                    } else {
-                        let p = std::path::Path::new(&path);
-                        if !p.is_dir() {
-                            self.setup_error = format!("Path does not exist: {path}");
-                        } else if !config::is_calibre_library(p) {
-                            self.setup_error =
-                                "Not a valid Calibre library (missing metadata.db).".to_string();
-                        } else {
-                            let cfg = config::Config {
-                                library_path: path.clone(),
-                            };
-                            cfg.save();
-                            let books = scanner::scan_library(p);
-                            let len = books.len();
-                            self.filtered_books = books.clone();
-                            self.all_books = books;
-                            self.scrollbar_state = ScrollbarState::new(len.saturating_sub(1));
-                            self.table_state = TableState::default();
-                            if len > 0 {
-                                self.table_state.select(Some(0));
-                            }
-                            self.mode = Mode::Normal;
-                        }
-                    }
-                }
-                _ => {}
-            },
             Mode::Normal => match code {
                 KeyCode::Char('q') | KeyCode::Esc => return true,
                 KeyCode::Down | KeyCode::Char('s') => self.next(),
@@ -183,91 +139,18 @@ impl App {
                     self.search_query.clear();
                 }
                 KeyCode::Enter => self.open_detail(),
-                KeyCode::Char('c') => self.enter_convert(),
+                KeyCode::Char('c') => views::convert::enter(self),
                 _ => {}
             },
-            Mode::Search => match code {
-                KeyCode::Esc => {
-                    self.mode = Mode::Normal;
-                    self.search_query.clear();
-                    self.apply_filter();
-                }
-                KeyCode::Enter => {
-                    self.mode = Mode::Normal;
-                }
-                KeyCode::Backspace => {
-                    self.search_query.pop();
-                    self.apply_filter();
-                }
-                KeyCode::Char(c) => {
-                    self.search_query.push(c);
-                    self.apply_filter();
-                }
-                _ => {}
-            },
-            Mode::Convert => match code {
-                KeyCode::Esc | KeyCode::Char('q') => {
-                    self.mode = Mode::Normal;
-                    self.convert_targets.clear();
-                    self.convert_message.clear();
-                }
-                KeyCode::Down | KeyCode::Char('s') => {
-                    if !self.convert_targets.is_empty() {
-                        self.convert_selected =
-                            (self.convert_selected + 1) % self.convert_targets.len();
-                    }
-                }
-                KeyCode::Up | KeyCode::Char('w') => {
-                    if !self.convert_targets.is_empty() {
-                        self.convert_selected = if self.convert_selected == 0 {
-                            self.convert_targets.len() - 1
-                        } else {
-                            self.convert_selected - 1
-                        };
-                    }
-                }
-                KeyCode::Enter => self.run_convert(),
-                _ => {}
-            },
-            Mode::Detail => match code {
-                KeyCode::Esc | KeyCode::Char('q') => {
-                    self.mode = Mode::Normal;
-                    self.detail = None;
-                    self.detail_scroll = 0;
-                    self.focus = Focus::Table;
-                }
-                KeyCode::Left | KeyCode::Char('a') => self.focus = Focus::Table,
-                KeyCode::Right | KeyCode::Char('d') => self.focus = Focus::Detail,
-                KeyCode::Char('c') => self.enter_convert(),
-                KeyCode::Down | KeyCode::Char('s') => match self.focus {
-                    Focus::Table => self.next(),
-                    Focus::Detail => {
-                        self.detail_scroll = self.detail_scroll.saturating_add(1);
-                    }
-                },
-                KeyCode::Up | KeyCode::Char('w') => match self.focus {
-                    Focus::Table => self.previous(),
-                    Focus::Detail => {
-                        self.detail_scroll = self.detail_scroll.saturating_sub(1);
-                    }
-                },
-                KeyCode::Enter => {
-                    if self.focus == Focus::Table {
-                        self.open_detail();
-                    } else {
-                        self.mode = Mode::Normal;
-                        self.detail = None;
-                        self.detail_scroll = 0;
-                        self.focus = Focus::Table;
-                    }
-                }
-                _ => {}
-            },
+            Mode::Setup => return views::setup::handle_key(self, code),
+            Mode::Search => views::search::handle_key(self, code),
+            Mode::Convert => views::convert::handle_key(self, code),
+            Mode::Detail => views::detail::handle_key(self, code),
         }
         false
     }
 
-    fn open_detail(&mut self) {
+    pub(crate) fn open_detail(&mut self) {
         let Some(idx) = self.table_state.selected() else {
             return;
         };
@@ -279,83 +162,8 @@ impl App {
         self.mode = Mode::Detail;
     }
 
-    fn enter_convert(&mut self) {
-        let Some(idx) = self.table_state.selected() else {
-            return;
-        };
-        let Some(book) = self.filtered_books.get(idx) else {
-            return;
-        };
-
-        let (has_kepubify, has_ebook_convert) = converter::available_backends();
-        if !has_kepubify && !has_ebook_convert {
-            self.convert_message = "No conversion tools found (install kepubify or calibre's ebook-convert)".to_string();
-            self.convert_is_error = true;
-            self.convert_targets.clear();
-            self.mode = Mode::Convert;
-            return;
-        }
-
-        let targets = converter::target_formats(&book.formats, has_kepubify, has_ebook_convert);
-        if targets.is_empty() {
-            self.convert_message = "No formats to convert to".to_string();
-            self.convert_is_error = true;
-            self.convert_targets.clear();
-            self.mode = Mode::Convert;
-            return;
-        }
-
-        self.convert_targets = targets;
-        self.convert_selected = 0;
-        self.convert_message.clear();
-        self.convert_is_error = false;
-        self.mode = Mode::Convert;
-    }
-
-    fn run_convert(&mut self) {
-        if self.convert_targets.is_empty() {
-            return;
-        }
-
-        let Some(idx) = self.table_state.selected() else {
-            return;
-        };
-        let Some(book) = self.filtered_books.get(idx) else {
-            return;
-        };
-
-        let (target, _tool) = self.convert_targets[self.convert_selected].clone();
-        let book_path = book.path.clone();
-
-        let Some(source_file) = converter::find_source_file(&book_path) else {
-            self.convert_message = "No suitable source file found".to_string();
-            self.convert_is_error = true;
-            return;
-        };
-
-        match converter::convert(&book_path, &source_file, &target) {
-            Ok(msg) => {
-                let new_formats = scanner::scan_formats(&book_path);
-                // Update filtered_books
-                if let Some(fb) = self.filtered_books.get_mut(idx) {
-                    let book_path_clone = fb.path.clone();
-                    fb.formats = new_formats.clone();
-                    // Update matching entry in all_books
-                    if let Some(ab) = self.all_books.iter_mut().find(|b| b.path == book_path_clone)
-                    {
-                        ab.formats = new_formats;
-                    }
-                }
-                self.convert_message = msg;
-                self.convert_is_error = false;
-                self.convert_targets.clear();
-                self.mode = Mode::Normal;
-            }
-            Err(err) => {
-                self.convert_message = err;
-                self.convert_is_error = true;
-            }
-        }
+    pub(crate) fn enter_convert(&mut self) {
+        views::convert::enter(self);
     }
 
     fn handle_click(&mut self, col: u16, row: u16) {
@@ -405,7 +213,7 @@ impl App {
         }
     }
 
-    fn apply_filter(&mut self) {
+    pub(crate) fn apply_filter(&mut self) {
         if self.search_query.is_empty() {
             self.filtered_books = self.all_books.clone();
         } else {
@@ -430,7 +238,7 @@ impl App {
         }
     }
 
-    fn next(&mut self) {
+    pub(crate) fn next(&mut self) {
         if self.filtered_books.is_empty() {
             return;
         }
@@ -445,7 +253,7 @@ impl App {
         self.scrollbar_state = self.scrollbar_state.position(i);
     }
 
-    fn previous(&mut self) {
+    pub(crate) fn previous(&mut self) {
         if self.filtered_books.is_empty() {
             return;
         }
@@ -469,474 +277,22 @@ impl App {
                 let cols =
                     Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)])
                         .split(chunks[0]);
-                self.draw_table(frame, cols[0]);
-                self.draw_detail(frame, cols[1]);
+                views::table::draw(self, frame, cols[0]);
+                views::detail::draw(self, frame, cols[1]);
             }
             Mode::Setup => {
-                self.draw_setup(frame);
+                views::setup::draw(self, frame);
                 return;
             }
             Mode::Convert => {
-                self.draw_table(frame, chunks[0]);
-                self.draw_convert(frame);
+                views::table::draw(self, frame, chunks[0]);
+                views::convert::draw(self, frame);
             }
             _ => {
-                self.draw_table(frame, chunks[0]);
+                views::table::draw(self, frame, chunks[0]);
             }
         }
 
-        self.draw_status_bar(frame, chunks[1]);
-    }
-
-    fn draw_setup(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        // Center a box: 60 wide, 7 tall
-        let box_width = 60u16.min(area.width.saturating_sub(4));
-        let box_height = 7u16;
-        let x = area.x + (area.width.saturating_sub(box_width)) / 2;
-        let y = area.y + (area.height.saturating_sub(box_height)) / 2;
-        let box_area = Rect::new(x, y, box_width, box_height);
-
-        let block = Block::default()
-            .title(" Enter Calibre library path ")
-            .borders(Borders::ALL)
-            .border_style(Style::new().fg(Color::LightBlue));
-
-        let inner = block.inner(box_area);
-        frame.render_widget(block, box_area);
-
-        // Input line with cursor
-        let input_line = Line::from(vec![
-            Span::raw(&self.setup_input),
-            Span::styled("█", Style::new().fg(Color::Yellow)),
-        ]);
-        frame.render_widget(Paragraph::new(input_line), inner);
-
-        // Error message below input
-        if !self.setup_error.is_empty() {
-            let err_area = Rect::new(inner.x, inner.y + 2, inner.width, 1);
-            frame.render_widget(
-                Paragraph::new(Span::styled(&self.setup_error, Style::new().fg(Color::Red))),
-                err_area,
-            );
-        }
-
-        // Hint at bottom of box
-        let hint_area = Rect::new(
-            inner.x,
-            inner.y + inner.height.saturating_sub(1),
-            inner.width,
-            1,
-        );
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" confirm  "),
-                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" quit"),
-            ])),
-            hint_area,
-        );
-    }
-
-    fn draw_convert(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let book_title = self
-            .table_state
-            .selected()
-            .and_then(|i| self.filtered_books.get(i))
-            .map(|b| b.title.as_str())
-            .unwrap_or("Unknown");
-
-        let title = format!(" Convert: {book_title} ");
-
-        // Box height: targets list + message line + hint line + borders + padding
-        let list_len = self.convert_targets.len().max(1);
-        let box_height = (list_len as u16 + 4).min(area.height.saturating_sub(2));
-        let box_width = 50u16.min(area.width.saturating_sub(4));
-        let x = area.x + (area.width.saturating_sub(box_width)) / 2;
-        let y = area.y + (area.height.saturating_sub(box_height)) / 2;
-        let box_area = Rect::new(x, y, box_width, box_height);
-
-        frame.render_widget(Clear, box_area);
-
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::new().fg(Color::LightBlue));
-
-        let inner = block.inner(box_area);
-        frame.render_widget(block, box_area);
-
-        if self.convert_targets.is_empty() {
-            // Only a message to display (error state)
-            let msg_style = if self.convert_is_error {
-                Style::new().fg(Color::Red)
-            } else {
-                Style::new().fg(Color::Green)
-            };
-            frame.render_widget(
-                Paragraph::new(Span::styled(&self.convert_message, msg_style)),
-                inner,
-            );
-            let hint_area = Rect::new(
-                inner.x,
-                inner.y + inner.height.saturating_sub(1),
-                inner.width,
-                1,
-            );
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                    Span::raw(" close"),
-                ])),
-                hint_area,
-            );
-            return;
-        }
-
-        // Render target list
-        let mut lines: Vec<Line> = Vec::new();
-        for (i, (fmt, tool)) in self.convert_targets.iter().enumerate() {
-            let marker = if i == self.convert_selected {
-                "▶ "
-            } else {
-                "  "
-            };
-            let style = if i == self.convert_selected {
-                Style::new().fg(Color::Yellow).bold()
-            } else {
-                Style::default()
-            };
-            lines.push(Line::from(Span::styled(
-                format!("{marker}{fmt} [{tool}]"),
-                style,
-            )));
-        }
-        let list_area = Rect::new(inner.x, inner.y, inner.width, lines.len() as u16);
-        frame.render_widget(Paragraph::new(lines), list_area);
-
-        // Message below list
-        if !self.convert_message.is_empty() {
-            let msg_y = inner.y + list_area.height + 1;
-            if msg_y < inner.y + inner.height {
-                let msg_style = if self.convert_is_error {
-                    Style::new().fg(Color::Red)
-                } else {
-                    Style::new().fg(Color::Green)
-                };
-                let msg_area = Rect::new(inner.x, msg_y, inner.width, 1);
-                frame.render_widget(
-                    Paragraph::new(Span::styled(&self.convert_message, msg_style)),
-                    msg_area,
-                );
-            }
-        }
-
-        // Hint at bottom
-        let hint_area = Rect::new(
-            inner.x,
-            inner.y + inner.height.saturating_sub(1),
-            inner.width,
-            1,
-        );
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" convert  "),
-                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" cancel"),
-            ])),
-            hint_area,
-        );
-    }
-
-    fn draw_table(&mut self, frame: &mut Frame, area: Rect) {
-        self.table_area = area;
-        let header = Row::new(vec![
-            Cell::from("Author").style(Style::new().bold()),
-            Cell::from("Title").style(Style::new().bold()),
-            Cell::from("Format").style(Style::new().bold()),
-        ])
-        .style(Style::new().fg(Color::Yellow))
-        .height(1)
-        .bottom_margin(1);
-
-        let rows: Vec<Row> = self
-            .filtered_books
-            .iter()
-            .map(|book| {
-                Row::new(vec![
-                    Cell::from(book.author.as_str()),
-                    Cell::from(book.title.as_str()),
-                    Cell::from(book.formats.as_str()),
-                ])
-            })
-            .collect();
-
-        let widths = [
-            Constraint::Percentage(30),
-            Constraint::Percentage(50),
-            Constraint::Percentage(20),
-        ];
-
-        let title = if self.search_query.is_empty() {
-            format!(" Rulibre — {} books ", self.filtered_books.len())
-        } else {
-            format!(
-                " Rulibre — {} / {} books ",
-                self.filtered_books.len(),
-                self.all_books.len()
-            )
-        };
-
-        let border_style = if matches!(self.mode, Mode::Detail) && self.focus == Focus::Table {
-            Style::new().fg(Color::LightBlue)
-        } else {
-            Style::default()
-        };
-
-        let table = Table::new(rows, widths)
-            .header(header)
-            .block(
-                Block::default()
-                    .title(title)
-                    .borders(Borders::ALL)
-                    .border_style(border_style),
-            )
-            .row_highlight_style(
-                Style::new()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("▶ ");
-
-        frame.render_stateful_widget(table, area, &mut self.table_state);
-
-        frame.render_stateful_widget(
-            Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(Some("↑"))
-                .end_symbol(Some("↓")),
-            area.inner(Margin {
-                vertical: 1,
-                horizontal: 0,
-            }),
-            &mut self.scrollbar_state,
-        );
-    }
-
-    fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
-        self.detail_area = area;
-
-        let border_style = if self.focus == Focus::Detail {
-            Style::new().fg(Color::LightBlue)
-        } else {
-            Style::default()
-        };
-
-        let Some(meta) = &self.detail else {
-            let block = Block::default()
-                .title(" Detail ")
-                .borders(Borders::ALL)
-                .border_style(border_style);
-            frame.render_widget(Paragraph::new("No metadata found.").block(block), area);
-            return;
-        };
-
-        let key_style = Style::new().fg(Color::Yellow).bold();
-        let section_style = Style::new()
-            .fg(Color::Cyan)
-            .bold()
-            .add_modifier(Modifier::UNDERLINED);
-
-        let mut lines: Vec<Line> = Vec::new();
-
-        // ── Book Info section ──
-        lines.push(Line::from(Span::styled("Book Info", section_style)));
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(vec![
-            Span::styled("Title:    ", key_style),
-            Span::raw(&meta.title),
-        ]));
-
-        if !meta.authors.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Author:   ", key_style),
-                Span::raw(meta.authors.join(", ")),
-            ]));
-        }
-
-        // Get formats from the selected book
-        if let Some(idx) = self.table_state.selected()
-            && let Some(book) = self.filtered_books.get(idx)
-        {
-            lines.push(Line::from(vec![
-                Span::styled("Formats:  ", key_style),
-                Span::raw(&book.formats),
-            ]));
-        }
-
-        if !meta.series.is_empty() {
-            let series_text = if meta.series_index.is_empty() {
-                meta.series.clone()
-            } else {
-                format!("{} #{}", meta.series, meta.series_index)
-            };
-            lines.push(Line::from(vec![
-                Span::styled("Series:   ", key_style),
-                Span::raw(series_text),
-            ]));
-        }
-
-        // ── Publishing section ──
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("Publishing", section_style)));
-        lines.push(Line::from(""));
-
-        if !meta.publisher.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Publisher: ", key_style),
-                Span::raw(&meta.publisher),
-            ]));
-        }
-        if !meta.date.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Date:      ", key_style),
-                Span::raw(&meta.date),
-            ]));
-        }
-        if !meta.language.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Language:  ", key_style),
-                Span::raw(&meta.language),
-            ]));
-        }
-        for (scheme, value) in &meta.identifiers {
-            lines.push(Line::from(vec![
-                Span::styled(format!("{scheme}: "), key_style),
-                Span::raw(value),
-            ]));
-        }
-        if !meta.rating.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("Rating:    ", key_style),
-                Span::raw(&meta.rating),
-            ]));
-        }
-
-        // ── Tags section ──
-        if !meta.subjects.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("Tags", section_style)));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::raw(meta.subjects.join(", "))));
-        }
-
-        // ── Description section ──
-        if !meta.description.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("Description", section_style)));
-            lines.push(Line::from(""));
-            // Word-wrap will be handled by Paragraph + Wrap
-            lines.push(Line::from(Span::raw(&meta.description)));
-        }
-
-        // ── Unknown Metadata section (debug only) ──
-        #[cfg(debug_assertions)]
-        if !meta.unrecognized.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("Unknown Metadata", section_style)));
-            lines.push(Line::from(""));
-            for tag in &meta.unrecognized {
-                lines.push(Line::from(Span::raw(tag)));
-            }
-        }
-
-        let block = Block::default()
-            .title(" Detail ")
-            .borders(Borders::ALL)
-            .border_style(border_style);
-
-        let paragraph = Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false })
-            .scroll((self.detail_scroll, 0));
-
-        frame.render_widget(paragraph, area);
-    }
-
-    fn draw_status_bar(&self, frame: &mut Frame, area: Rect) {
-        let bar = match self.mode {
-            Mode::Setup => Line::from(""),
-            Mode::Search => Line::from(vec![
-                Span::styled(" /", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(&self.search_query),
-                Span::styled("█", Style::new().fg(Color::Yellow)),
-            ]),
-            Mode::Detail => Line::from(vec![
-                Span::styled(" ←", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("→", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" focus  "),
-                Span::styled("w", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" up  "),
-                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" down  "),
-                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" convert  "),
-                Span::styled("q", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" close"),
-            ]),
-            Mode::Convert => Line::from(vec![
-                Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" up  "),
-                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" down  "),
-                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" convert  "),
-                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" cancel"),
-            ]),
-            Mode::Normal => Line::from(vec![
-                Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" up  "),
-                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" down  "),
-                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" detail  "),
-                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" convert  "),
-                Span::styled("/", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" search  "),
-                Span::styled("q", Style::new().fg(Color::Yellow).bold()),
-                Span::raw("/"),
-                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-                Span::raw(" quit"),
-            ]),
-        };
-
-        let style = match self.mode {
-            Mode::Search => Style::new().bg(Color::DarkGray),
-            _ => Style::new().bg(Color::Black),
-        };
-
-        frame.render_widget(Paragraph::new(bar).style(style), area);
+        views::table::draw_status_bar(self, frame, chunks[1]);
     }
 }

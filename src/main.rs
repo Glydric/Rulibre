@@ -1,4 +1,5 @@
 mod app;
+mod views;
 
 use std::{
     io::{self, stdout},
