@@ -1,7 +1,4 @@
 mod app;
-mod config;
-mod metadata;
-mod scanner;
 
 use std::{
     io::{self, stdout},
@@ -13,6 +10,7 @@ use crossterm::{
     ExecutableCommand,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use rulibre::{config, scanner};
 
 fn main() -> io::Result<()> {
     let cfg = match config::load_config() {

@@ -12,6 +12,7 @@ pub struct Metadata {
     pub rating: String,
     pub series: String,
     pub series_index: String,
+    pub unrecognized: Vec<String>,
 }
 
 const DC_NS: &str = "http://purl.org/dc/elements/1.1/";
@@ -22,9 +23,7 @@ pub fn parse_opf(book_path: &Path) -> Option<Metadata> {
     let xml = fs::read_to_string(&opf_path).ok()?;
     let doc = roxmltree::Document::parse(&xml).ok()?;
 
-    let metadata_node = doc
-        .descendants()
-        .find(|n| n.has_tag_name("metadata"))?;
+    let metadata_node = doc.descendants().find(|n| n.has_tag_name("metadata"))?;
 
     let mut title = String::new();
     let mut authors = Vec::new();
@@ -37,6 +36,7 @@ pub fn parse_opf(book_path: &Path) -> Option<Metadata> {
     let mut rating = String::new();
     let mut series = String::new();
     let mut series_index = String::new();
+    let mut unrecognized = Vec::new();
 
     for child in metadata_node.children().filter(|n| n.is_element()) {
         let ns = child.tag_name().namespace().unwrap_or_default();
@@ -89,10 +89,20 @@ pub fn parse_opf(book_path: &Path) -> Option<Metadata> {
                     "calibre:rating" => rating = content.to_string(),
                     "calibre:series" => series = content.to_string(),
                     "calibre:series_index" => series_index = content.to_string(),
+                    other if !other.is_empty() => {
+                        unrecognized.push(format!("meta[{}] = {}", other, content));
+                    }
                     _ => {}
                 }
             }
-            _ => {}
+            (ns, tag) => {
+                let label = if ns.is_empty() {
+                    tag.to_string()
+                } else {
+                    format!("{{{ns}}}{tag}")
+                };
+                unrecognized.push(label);
+            }
         }
     }
 
@@ -108,6 +118,7 @@ pub fn parse_opf(book_path: &Path) -> Option<Metadata> {
         rating,
         series,
         series_index,
+        unrecognized,
     })
 }
 

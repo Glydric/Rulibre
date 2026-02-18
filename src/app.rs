@@ -12,8 +12,8 @@ use ratatui::{
     },
 };
 
-use crate::metadata::{self, Metadata};
-use crate::scanner::Book;
+use rulibre::metadata::{self, Metadata};
+use rulibre::scanner::Book;
 
 enum Mode {
     Normal,
@@ -362,6 +362,17 @@ impl App {
             lines.push(Line::from(""));
             // Word-wrap will be handled by Paragraph + Wrap
             lines.push(Line::from(Span::raw(&meta.description)));
+        }
+
+        // ── Unknown Metadata section (debug only) ──
+        #[cfg(debug_assertions)]
+        if !meta.unrecognized.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled("Unknown Metadata", section_style)));
+            lines.push(Line::from(""));
+            for tag in &meta.unrecognized {
+                lines.push(Line::from(Span::raw(tag)));
+            }
         }
 
         let block = Block::default().title(" Detail ").borders(Borders::ALL);
