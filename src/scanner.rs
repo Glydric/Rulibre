@@ -7,7 +7,7 @@ pub struct Book {
     pub formats: String,
 }
 
-// files are automatically ignores
+// files are automatically ignored
 const SKIP_TOP_LEVEL_FOLDERS: &[&str] = &[".caltrash", ".calnotes", ".DS_Store", "downloaded"];
 
 const SKIP_BOOK_FILES: &[&str] = &["metadata.opf", "cover.jpg", ".DS_Store"];
@@ -16,7 +16,7 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
     let mut books = Vec::new();
 
     let Ok(author_dirs) = fs::read_dir(library_path) else {
-        eprintln!("Failed to read library directory: {e}");
+        eprintln!("Failed to read library directory");
         process::exit(1);
     };
 
@@ -53,7 +53,8 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
                 if !file_entry.path().is_file() {
                     continue;
                 }
-                let Some(ext) = file_entry.path().extension() else {
+                let path = file_entry.path();
+                let Some(ext) = path.extension() else {
                     continue;
                 };
                 let ext_upper = ext.to_string_lossy().to_uppercase();
