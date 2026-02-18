@@ -39,6 +39,7 @@ On first run, you'll be prompted for your Calibre library path. The path is save
 - Browse all books in your Calibre library sorted by author and title
 - Search/filter with `/` across author, title, and format
 - Detail panel showing metadata parsed from `metadata.opf` (title, author, publisher, date, language, series, tags, description, identifiers)
+- Convert books between formats (`c` key) using [kepubify](https://pgaskin.net/kepubify/) or Calibre's `ebook-convert`
 - Mouse support: click to select books, scroll both panels
 - Keyboard focus switching between table and detail panels
 
@@ -49,6 +50,15 @@ The scanner walks `{library}/{author}/{title (id)}/` directories and picks up bo
 Excluded from scanning:
 - `.caltrash/`, `.calnotes/`, `.DS_Store`, `downloaded/` (Calibre internal)
 - `metadata.opf`, `cover.jpg` inside book folders
+
+## Book conversion
+
+Press `c` on a selected book to convert it to another format. Conversion options are shown based on which tools are installed:
+
+- **kepubify** — used for EPUB → KEPUB conversion. Install from [pgaskin.net/kepubify](https://pgaskin.net/kepubify/)
+- **ebook-convert** (Calibre) — used for all other conversions (EPUB, PDF, MOBI, AZW3, KEPUB, DOCX, TXT). Included with [Calibre](https://calibre-ebook.com/)
+
+Only formats you don't already have are offered. If neither tool is installed, the convert dialog will let you know.
 
 ## Extra tools
 

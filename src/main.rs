@@ -31,7 +31,7 @@ fn main() -> io::Result<()> {
     let cfg = config::Config::load();
     let mut app = app::App::new(cfg);
 
-    // todo to understand
+    // used to have complete control of terminal text
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     stdout().execute(EnableMouseCapture)?;

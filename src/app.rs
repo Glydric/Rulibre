@@ -7,12 +7,13 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Table, TableState, Wrap,
+        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
     },
 };
 
 use rulibre::config;
+use rulibre::converter;
 use rulibre::metadata::{self, Metadata};
 use rulibre::scanner::{self, Book};
 
@@ -21,6 +22,7 @@ enum Mode {
     Normal,
     Search,
     Detail,
+    Convert,
 }
 
 #[derive(PartialEq)]
@@ -43,6 +45,10 @@ pub struct App {
     detail_area: Rect,
     setup_input: String,
     setup_error: String,
+    convert_targets: Vec<(String, String)>,
+    convert_selected: usize,
+    convert_message: String,
+    convert_is_error: bool,
 }
 
 impl App {
@@ -69,6 +75,10 @@ impl App {
                     detail_area: Rect::default(),
                     setup_input: String::new(),
                     setup_error: String::new(),
+                    convert_targets: Vec::new(),
+                    convert_selected: 0,
+                    convert_message: String::new(),
+                    convert_is_error: false,
                 }
             }
             _ => Self {
@@ -85,6 +95,10 @@ impl App {
                 detail_area: Rect::default(),
                 setup_input: String::new(),
                 setup_error: String::new(),
+                convert_targets: Vec::new(),
+                convert_selected: 0,
+                convert_message: String::new(),
+                convert_is_error: false,
             },
         }
     }
@@ -169,6 +183,7 @@ impl App {
                     self.search_query.clear();
                 }
                 KeyCode::Enter => self.open_detail(),
+                KeyCode::Char('c') => self.enter_convert(),
                 _ => {}
             },
             Mode::Search => match code {
@@ -190,6 +205,30 @@ impl App {
                 }
                 _ => {}
             },
+            Mode::Convert => match code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.mode = Mode::Normal;
+                    self.convert_targets.clear();
+                    self.convert_message.clear();
+                }
+                KeyCode::Down | KeyCode::Char('s') => {
+                    if !self.convert_targets.is_empty() {
+                        self.convert_selected =
+                            (self.convert_selected + 1) % self.convert_targets.len();
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('w') => {
+                    if !self.convert_targets.is_empty() {
+                        self.convert_selected = if self.convert_selected == 0 {
+                            self.convert_targets.len() - 1
+                        } else {
+                            self.convert_selected - 1
+                        };
+                    }
+                }
+                KeyCode::Enter => self.run_convert(),
+                _ => {}
+            },
             Mode::Detail => match code {
                 KeyCode::Esc | KeyCode::Char('q') => {
                     self.mode = Mode::Normal;
@@ -199,6 +238,7 @@ impl App {
                 }
                 KeyCode::Left | KeyCode::Char('a') => self.focus = Focus::Table,
                 KeyCode::Right | KeyCode::Char('d') => self.focus = Focus::Detail,
+                KeyCode::Char('c') => self.enter_convert(),
                 KeyCode::Down | KeyCode::Char('s') => match self.focus {
                     Focus::Table => self.next(),
                     Focus::Detail => {
@@ -237,6 +277,85 @@ impl App {
         self.detail = metadata::parse_opf(&book.path);
         self.detail_scroll = 0;
         self.mode = Mode::Detail;
+    }
+
+    fn enter_convert(&mut self) {
+        let Some(idx) = self.table_state.selected() else {
+            return;
+        };
+        let Some(book) = self.filtered_books.get(idx) else {
+            return;
+        };
+
+        let (has_kepubify, has_ebook_convert) = converter::available_backends();
+        if !has_kepubify && !has_ebook_convert {
+            self.convert_message = "No conversion tools found (install kepubify or calibre's ebook-convert)".to_string();
+            self.convert_is_error = true;
+            self.convert_targets.clear();
+            self.mode = Mode::Convert;
+            return;
+        }
+
+        let targets = converter::target_formats(&book.formats, has_kepubify, has_ebook_convert);
+        if targets.is_empty() {
+            self.convert_message = "No formats to convert to".to_string();
+            self.convert_is_error = true;
+            self.convert_targets.clear();
+            self.mode = Mode::Convert;
+            return;
+        }
+
+        self.convert_targets = targets;
+        self.convert_selected = 0;
+        self.convert_message.clear();
+        self.convert_is_error = false;
+        self.mode = Mode::Convert;
+    }
+
+    fn run_convert(&mut self) {
+        if self.convert_targets.is_empty() {
+            return;
+        }
+
+        let Some(idx) = self.table_state.selected() else {
+            return;
+        };
+        let Some(book) = self.filtered_books.get(idx) else {
+            return;
+        };
+
+        let (target, _tool) = self.convert_targets[self.convert_selected].clone();
+        let book_path = book.path.clone();
+
+        let Some(source_file) = converter::find_source_file(&book_path) else {
+            self.convert_message = "No suitable source file found".to_string();
+            self.convert_is_error = true;
+            return;
+        };
+
+        match converter::convert(&book_path, &source_file, &target) {
+            Ok(msg) => {
+                let new_formats = scanner::scan_formats(&book_path);
+                // Update filtered_books
+                if let Some(fb) = self.filtered_books.get_mut(idx) {
+                    let book_path_clone = fb.path.clone();
+                    fb.formats = new_formats.clone();
+                    // Update matching entry in all_books
+                    if let Some(ab) = self.all_books.iter_mut().find(|b| b.path == book_path_clone)
+                    {
+                        ab.formats = new_formats;
+                    }
+                }
+                self.convert_message = msg;
+                self.convert_is_error = false;
+                self.convert_targets.clear();
+                self.mode = Mode::Normal;
+            }
+            Err(err) => {
+                self.convert_message = err;
+                self.convert_is_error = true;
+            }
+        }
     }
 
     fn handle_click(&mut self, col: u16, row: u16) {
@@ -357,6 +476,10 @@ impl App {
                 self.draw_setup(frame);
                 return;
             }
+            Mode::Convert => {
+                self.draw_table(frame, chunks[0]);
+                self.draw_convert(frame);
+            }
             _ => {
                 self.draw_table(frame, chunks[0]);
             }
@@ -412,6 +535,119 @@ impl App {
                 Span::raw(" confirm  "),
                 Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" quit"),
+            ])),
+            hint_area,
+        );
+    }
+
+    fn draw_convert(&self, frame: &mut Frame) {
+        let area = frame.area();
+
+        let book_title = self
+            .table_state
+            .selected()
+            .and_then(|i| self.filtered_books.get(i))
+            .map(|b| b.title.as_str())
+            .unwrap_or("Unknown");
+
+        let title = format!(" Convert: {book_title} ");
+
+        // Box height: targets list + message line + hint line + borders + padding
+        let list_len = self.convert_targets.len().max(1);
+        let box_height = (list_len as u16 + 4).min(area.height.saturating_sub(2));
+        let box_width = 50u16.min(area.width.saturating_sub(4));
+        let x = area.x + (area.width.saturating_sub(box_width)) / 2;
+        let y = area.y + (area.height.saturating_sub(box_height)) / 2;
+        let box_area = Rect::new(x, y, box_width, box_height);
+
+        frame.render_widget(Clear, box_area);
+
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(Color::LightBlue));
+
+        let inner = block.inner(box_area);
+        frame.render_widget(block, box_area);
+
+        if self.convert_targets.is_empty() {
+            // Only a message to display (error state)
+            let msg_style = if self.convert_is_error {
+                Style::new().fg(Color::Red)
+            } else {
+                Style::new().fg(Color::Green)
+            };
+            frame.render_widget(
+                Paragraph::new(Span::styled(&self.convert_message, msg_style)),
+                inner,
+            );
+            let hint_area = Rect::new(
+                inner.x,
+                inner.y + inner.height.saturating_sub(1),
+                inner.width,
+                1,
+            );
+            frame.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
+                    Span::raw(" close"),
+                ])),
+                hint_area,
+            );
+            return;
+        }
+
+        // Render target list
+        let mut lines: Vec<Line> = Vec::new();
+        for (i, (fmt, tool)) in self.convert_targets.iter().enumerate() {
+            let marker = if i == self.convert_selected {
+                "▶ "
+            } else {
+                "  "
+            };
+            let style = if i == self.convert_selected {
+                Style::new().fg(Color::Yellow).bold()
+            } else {
+                Style::default()
+            };
+            lines.push(Line::from(Span::styled(
+                format!("{marker}{fmt} [{tool}]"),
+                style,
+            )));
+        }
+        let list_area = Rect::new(inner.x, inner.y, inner.width, lines.len() as u16);
+        frame.render_widget(Paragraph::new(lines), list_area);
+
+        // Message below list
+        if !self.convert_message.is_empty() {
+            let msg_y = inner.y + list_area.height + 1;
+            if msg_y < inner.y + inner.height {
+                let msg_style = if self.convert_is_error {
+                    Style::new().fg(Color::Red)
+                } else {
+                    Style::new().fg(Color::Green)
+                };
+                let msg_area = Rect::new(inner.x, msg_y, inner.width, 1);
+                frame.render_widget(
+                    Paragraph::new(Span::styled(&self.convert_message, msg_style)),
+                    msg_area,
+                );
+            }
+        }
+
+        // Hint at bottom
+        let hint_area = Rect::new(
+            inner.x,
+            inner.y + inner.height.saturating_sub(1),
+            inner.width,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
+                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" cancel"),
             ])),
             hint_area,
         );
@@ -653,10 +889,26 @@ impl App {
                 Span::raw("/"),
                 Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" down  "),
+                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
                 Span::styled("q", Style::new().fg(Color::Yellow).bold()),
                 Span::raw("/"),
                 Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" close"),
+            ]),
+            Mode::Convert => Line::from(vec![
+                Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" up  "),
+                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" down  "),
+                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
+                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" cancel"),
             ]),
             Mode::Normal => Line::from(vec![
                 Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
@@ -669,6 +921,8 @@ impl App {
                 Span::raw(" down  "),
                 Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" detail  "),
+                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
                 Span::styled("/", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(" search  "),
                 Span::styled("q", Style::new().fg(Color::Yellow).bold()),

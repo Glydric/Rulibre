@@ -17,6 +17,33 @@ const SKIP_TOP_LEVEL_FOLDERS: &[&str] = &[".caltrash", ".calnotes", ".DS_Store",
 
 const SKIP_BOOK_FILES: &[&str] = &["metadata.opf", "cover.jpg", ".DS_Store"];
 
+/// Scan a single book directory and return a sorted, comma-joined formats string.
+pub fn scan_formats(book_dir: &Path) -> String {
+    let Ok(entries) = fs::read_dir(book_dir) else {
+        return String::new();
+    };
+
+    let mut formats: Vec<String> = Vec::new();
+    for entry in entries.flatten() {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if SKIP_BOOK_FILES.contains(&fname.as_str()) {
+            continue;
+        }
+        if !entry.path().is_file() {
+            continue;
+        }
+        let Some(ext_upper) = extract_format(&fname) else {
+            continue;
+        };
+        if !formats.contains(&ext_upper) {
+            formats.push(ext_upper);
+        }
+    }
+
+    formats.sort();
+    formats.join(", ")
+}
+
 pub fn scan_library(library_path: &Path) -> Vec<Book> {
     let mut books = Vec::new();
 
@@ -45,33 +72,13 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
             let raw_title = title_entry.file_name().to_string_lossy().to_string();
             let title = strip_calibre_id(&raw_title);
 
-            let Ok(book_files) = fs::read_dir(title_entry.path()) else {
-                continue;
-            };
-
-            let mut formats: Vec<String> = Vec::new();
-            for file_entry in book_files.flatten() {
-                let fname = file_entry.file_name().to_string_lossy().to_string();
-                if SKIP_BOOK_FILES.contains(&fname.as_str()) {
-                    continue;
-                }
-                if !file_entry.path().is_file() {
-                    continue;
-                }
-                let Some(ext_upper) = extract_format(&fname) else {
-                    continue;
-                };
-                if !formats.contains(&ext_upper) {
-                    formats.push(ext_upper);
-                }
-            }
+            let formats = scan_formats(&title_entry.path());
 
             if !formats.is_empty() {
-                formats.sort();
                 books.push(Book {
                     title,
                     author: author_name.clone(),
-                    formats: formats.join(", "),
+                    formats,
                     path: title_entry.path(),
                 });
             }
@@ -88,7 +95,7 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
     books
 }
 
-fn extract_format(filename: &str) -> Option<String> {
+pub fn extract_format(filename: &str) -> Option<String> {
     let lower = filename.to_lowercase();
     if lower.ends_with(".kepub.epub") {
         return Some("KEPUB".to_string());
