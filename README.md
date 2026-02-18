@@ -1,28 +1,59 @@
-# rulibre
+# Rulibre
 
-A terminal UI for browsing your Calibre library. Displays books in a table with Author, Title, and Format columns.
+A terminal UI for browsing your [Calibre](https://calibre-ebook.com/) library. Displays books in a searchable table with Author, Title, and Format columns, with a detail panel showing metadata.
 
-## Usage
+![Rulibre screenshot](assets/screenshot.png)
+
+## Install
 
 ```
-cargo run
+cargo install --git https://github.com/Glydric/Rulibre
 ```
 
-On first run, you'll be prompted for your Calibre library path. The path is saved to `~/.config/rulibre/config.toml`.
+To uninstall:
 
-### Controls
+```
+cargo uninstall rulibre
+```
 
-| Key       | Action    |
-|-----------|-----------|
-| `j` / `↓` | Next row  |
-| `k` / `↑` | Prev row  |
-| `q` / `Esc` | Quit    |
+Or clone and install locally:
+
+```
+git clone https://github.com/Glydric/Rulibre.git
+cd Rulibre
+cargo install --path .
+```
+
+Then run with:
+
+```
+rulibre
+```
+
+## Configuration
+
+On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
+
+## Features
+
+- Browse all books in your Calibre library sorted by author and title
+- Search/filter with `/` across author, title, and format
+- Detail panel showing metadata parsed from `metadata.opf` (title, author, publisher, date, language, series, tags, description, identifiers)
+- Mouse support: click to select books, scroll both panels
+- Keyboard focus switching between table and detail panels
 
 ## What gets scanned
 
-The scanner walks `{library}/{author}/{title (id)}/` directories and picks up book files by extension (EPUB, CBZ, PDF, etc.).
+The scanner walks `{library}/{author}/{title (id)}/` directories and picks up book files by extension (EPUB, KEPUB, CBZ, PDF, etc.).
 
 Excluded from scanning:
-- `metadata.db`, `metadata_db_prefs_backup.json` (Calibre internal)
 - `.caltrash/`, `.calnotes/`, `.DS_Store`, `downloaded/` (Calibre internal)
 - `metadata.opf`, `cover.jpg` inside book folders
+
+## Extra tools
+
+A diagnostic binary is included for checking unrecognized metadata tags:
+
+```
+cargo run --bin scan_metadata -- /path/to/calibre/library
+```
