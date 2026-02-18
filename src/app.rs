@@ -1,6 +1,6 @@
 use std::io;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Margin, Rect},
@@ -30,6 +30,8 @@ pub struct App {
     search_query: String,
     detail: Option<Metadata>,
     detail_scroll: u16,
+    table_area: Rect,
+    detail_area: Rect,
 }
 
 impl App {
@@ -48,6 +50,8 @@ impl App {
             search_query: String::new(),
             detail: None,
             detail_scroll: 0,
+            table_area: Rect::default(),
+            detail_area: Rect::default(),
         }
     }
 
@@ -55,58 +59,78 @@ impl App {
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    if self.handle_key(key.code) {
+                        return Ok(());
+                    }
                 }
-                match self.mode {
-                    Mode::Normal => match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                        KeyCode::Down | KeyCode::Char('s') => self.next(),
-                        KeyCode::Up | KeyCode::Char('w') => self.previous(),
-                        KeyCode::Char('/') => {
-                            self.mode = Mode::Search;
-                            self.search_query.clear();
-                        }
-                        KeyCode::Enter => self.open_detail(),
-                        _ => {}
-                    },
-                    Mode::Search => match key.code {
-                        KeyCode::Esc => {
-                            self.mode = Mode::Normal;
-                            self.search_query.clear();
-                            self.apply_filter();
-                        }
-                        KeyCode::Enter => {
-                            self.mode = Mode::Normal;
-                        }
-                        KeyCode::Backspace => {
-                            self.search_query.pop();
-                            self.apply_filter();
-                        }
-                        KeyCode::Char(c) => {
-                            self.search_query.push(c);
-                            self.apply_filter();
-                        }
-                        _ => {}
-                    },
-                    Mode::Detail => match key.code {
-                        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
-                            self.mode = Mode::Normal;
-                            self.detail = None;
-                            self.detail_scroll = 0;
-                        }
-                        KeyCode::Down | KeyCode::Char('s') => {
-                            self.detail_scroll = self.detail_scroll.saturating_add(1);
-                        }
-                        KeyCode::Up | KeyCode::Char('w') => {
-                            self.detail_scroll = self.detail_scroll.saturating_sub(1);
-                        }
-                        _ => {}
-                    },
-                }
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        self.handle_click(mouse.column, mouse.row);
+                    }
+                    MouseEventKind::ScrollUp => {
+                        self.handle_scroll(mouse.column, mouse.row, true);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.handle_scroll(mouse.column, mouse.row, false);
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
+    }
+
+    /// Returns `true` if the app should quit.
+    fn handle_key(&mut self, code: KeyCode) -> bool {
+        match self.mode {
+            Mode::Normal => match code {
+                KeyCode::Char('q') | KeyCode::Esc => return true,
+                KeyCode::Down | KeyCode::Char('s') => self.next(),
+                KeyCode::Up | KeyCode::Char('w') => self.previous(),
+                KeyCode::Char('/') => {
+                    self.mode = Mode::Search;
+                    self.search_query.clear();
+                }
+                KeyCode::Enter => self.open_detail(),
+                _ => {}
+            },
+            Mode::Search => match code {
+                KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                    self.search_query.clear();
+                    self.apply_filter();
+                }
+                KeyCode::Enter => {
+                    self.mode = Mode::Normal;
+                }
+                KeyCode::Backspace => {
+                    self.search_query.pop();
+                    self.apply_filter();
+                }
+                KeyCode::Char(c) => {
+                    self.search_query.push(c);
+                    self.apply_filter();
+                }
+                _ => {}
+            },
+            Mode::Detail => match code {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
+                    self.mode = Mode::Normal;
+                    self.detail = None;
+                    self.detail_scroll = 0;
+                }
+                KeyCode::Down | KeyCode::Char('s') => {
+                    self.detail_scroll = self.detail_scroll.saturating_add(1);
+                }
+                KeyCode::Up | KeyCode::Char('w') => {
+                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                }
+                _ => {}
+            },
+        }
+        false
     }
 
     fn open_detail(&mut self) {
@@ -119,6 +143,53 @@ impl App {
         self.detail = metadata::parse_opf(&book.path);
         self.detail_scroll = 0;
         self.mode = Mode::Detail;
+    }
+
+    fn handle_click(&mut self, col: u16, row: u16) {
+        // Check if click is within the table area
+        let area = self.table_area;
+        if col < area.x || col >= area.x + area.width || row < area.y || row >= area.y + area.height
+        {
+            return;
+        }
+
+        // Account for border (1) + header (1) + header bottom_margin (1) = 3 rows offset
+        let content_start = area.y + 3;
+        if row < content_start {
+            return;
+        }
+
+        let clicked_row = (row - content_start) as usize;
+        let offset = self.table_state.offset();
+        let idx = offset + clicked_row;
+
+        if idx < self.filtered_books.len() {
+            self.table_state.select(Some(idx));
+            self.scrollbar_state = self.scrollbar_state.position(idx);
+            self.open_detail();
+        }
+    }
+
+    fn is_in_area(col: u16, row: u16, area: Rect) -> bool {
+        col >= area.x && col < area.x + area.width && row >= area.y && row < area.y + area.height
+    }
+
+    fn handle_scroll(&mut self, col: u16, row: u16, up: bool) {
+        if Self::is_in_area(col, row, self.table_area) {
+            if up {
+                self.previous();
+            } else {
+                self.next();
+            }
+        } else if matches!(self.mode, Mode::Detail)
+            && Self::is_in_area(col, row, self.detail_area)
+        {
+            if up {
+                self.detail_scroll = self.detail_scroll.saturating_sub(1);
+            } else {
+                self.detail_scroll = self.detail_scroll.saturating_add(1);
+            }
+        }
     }
 
     fn apply_filter(&mut self) {
@@ -197,6 +268,7 @@ impl App {
     }
 
     fn draw_table(&mut self, frame: &mut Frame, area: Rect) {
+        self.table_area = area;
         let header = Row::new(vec![
             Cell::from("Author").style(Style::new().bold()),
             Cell::from("Title").style(Style::new().bold()),
@@ -225,10 +297,10 @@ impl App {
         ];
 
         let title = if self.search_query.is_empty() {
-            format!(" rulibre — {} books ", self.filtered_books.len())
+            format!(" Rulibre — {} books ", self.filtered_books.len())
         } else {
             format!(
-                " rulibre — {} / {} books ",
+                " Rulibre — {} / {} books ",
                 self.filtered_books.len(),
                 self.all_books.len()
             )
@@ -258,7 +330,8 @@ impl App {
         );
     }
 
-    fn draw_detail(&self, frame: &mut Frame, area: Rect) {
+    fn draw_detail(&mut self, frame: &mut Frame, area: Rect) {
+        self.detail_area = area;
         let Some(meta) = &self.detail else {
             let block = Block::default().title(" Detail ").borders(Borders::ALL);
             frame.render_widget(Paragraph::new("No metadata found.").block(block), area);

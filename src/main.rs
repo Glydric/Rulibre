@@ -8,6 +8,7 @@ use std::{
 
 use crossterm::{
     ExecutableCommand,
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use rulibre::{config, scanner};
@@ -43,11 +44,13 @@ fn main() -> io::Result<()> {
     // todo to understand
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
+    stdout().execute(EnableMouseCapture)?;
     let mut terminal = ratatui::init();
 
     let result = app.run(&mut terminal);
 
     ratatui::restore();
+    stdout().execute(DisableMouseCapture)?;
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
 
