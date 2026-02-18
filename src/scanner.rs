@@ -53,11 +53,9 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
                 if !file_entry.path().is_file() {
                     continue;
                 }
-                let path = file_entry.path();
-                let Some(ext) = path.extension() else {
+                let Some(ext_upper) = extract_format(&fname) else {
                     continue;
                 };
-                let ext_upper = ext.to_string_lossy().to_uppercase();
                 if !formats.contains(&ext_upper) {
                     formats.push(ext_upper);
                 }
@@ -82,6 +80,18 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
     });
 
     books
+}
+
+fn extract_format(filename: &str) -> Option<String> {
+    let lower = filename.to_lowercase();
+    if lower.ends_with(".kepub.epub") {
+        return Some("KEPUB".to_string());
+    }
+    let dot = filename.rfind('.')?;
+    if dot == 0 {
+        return None;
+    }
+    Some(filename[dot + 1..].to_uppercase())
 }
 
 fn strip_calibre_id(dir_name: &str) -> String {
