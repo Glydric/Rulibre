@@ -2,8 +2,7 @@ mod app;
 
 use std::{
     io::{self, stdout},
-    path::Path,
-    process,
+    process::Command,
 };
 
 use crossterm::{
@@ -11,35 +10,26 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use rulibre::{config, scanner};
+use rulibre::config;
 
 fn main() -> io::Result<()> {
-    let cfg = match config::load_config() {
-        Some(c) => c,
-        None => {
-            let path = config::prompt_library_path();
-            let c = config::Config { library_path: path };
-            config::save_config(&c);
-            eprintln!("Config saved to {}", config::config_path().display());
-            c
+    if std::env::args().any(|a| a == "--config") {
+        let config_path = config::Config::path();
+        std::fs::create_dir_all(config_path.parent().unwrap())?;
+        if !config_path.exists() {
+            // Create a default config so the user has something to edit
+            let default = config::Config {
+                library_path: String::new(),
+            };
+            default.save();
         }
-    };
-
-    let library_path = Path::new(&cfg.library_path);
-    if !library_path.is_dir() {
-        eprintln!("Library path does not exist: {}", cfg.library_path);
-        process::exit(1);
-    }
-    if !config::is_calibre_library(library_path) {
-        eprintln!(
-            "Not a valid Calibre library (missing metadata.db): {}",
-            cfg.library_path
-        );
-        process::exit(1);
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+        let status = Command::new(&editor).arg(&config_path).status()?;
+        std::process::exit(status.code().unwrap_or(0));
     }
 
-    let books = scanner::scan_library(library_path);
-    let mut app = app::App::new(books);
+    let cfg = config::Config::load();
+    let mut app = app::App::new(cfg);
 
     // todo to understand
     enable_raw_mode()?;

@@ -12,10 +12,12 @@ use ratatui::{
     },
 };
 
+use rulibre::config;
 use rulibre::metadata::{self, Metadata};
-use rulibre::scanner::Book;
+use rulibre::scanner::{self, Book};
 
 enum Mode {
+    Setup,
     Normal,
     Search,
     Detail,
@@ -39,27 +41,51 @@ pub struct App {
     focus: Focus,
     table_area: Rect,
     detail_area: Rect,
+    setup_input: String,
+    setup_error: String,
 }
 
 impl App {
-    pub fn new(books: Vec<Book>) -> Self {
-        let len = books.len();
-        let mut table_state = TableState::default();
-        if !books.is_empty() {
-            table_state.select(Some(0));
-        }
-        Self {
-            filtered_books: books.clone(),
-            all_books: books,
-            table_state,
-            scrollbar_state: ScrollbarState::new(len.saturating_sub(1)),
-            mode: Mode::Normal,
-            search_query: String::new(),
-            detail: None,
-            detail_scroll: 0,
-            focus: Focus::Table,
-            table_area: Rect::default(),
-            detail_area: Rect::default(),
+    pub fn new(cfg: Option<config::Config>) -> Self {
+        match cfg {
+            Some(cfg) if config::is_calibre_library(std::path::Path::new(&cfg.library_path)) => {
+                let books = scanner::scan_library(std::path::Path::new(&cfg.library_path));
+                let len = books.len();
+                let mut table_state = TableState::default();
+                if !books.is_empty() {
+                    table_state.select(Some(0));
+                }
+                Self {
+                    filtered_books: books.clone(),
+                    all_books: books,
+                    table_state,
+                    scrollbar_state: ScrollbarState::new(len.saturating_sub(1)),
+                    mode: Mode::Normal,
+                    search_query: String::new(),
+                    detail: None,
+                    detail_scroll: 0,
+                    focus: Focus::Table,
+                    table_area: Rect::default(),
+                    detail_area: Rect::default(),
+                    setup_input: String::new(),
+                    setup_error: String::new(),
+                }
+            }
+            _ => Self {
+                all_books: Vec::new(),
+                filtered_books: Vec::new(),
+                table_state: TableState::default(),
+                scrollbar_state: ScrollbarState::new(0),
+                mode: Mode::Setup,
+                search_query: String::new(),
+                detail: None,
+                detail_scroll: 0,
+                focus: Focus::Table,
+                table_area: Rect::default(),
+                detail_area: Rect::default(),
+                setup_input: String::new(),
+                setup_error: String::new(),
+            },
         }
     }
 
@@ -93,6 +119,47 @@ impl App {
     /// Returns `true` if the app should quit.
     fn handle_key(&mut self, code: KeyCode) -> bool {
         match self.mode {
+            Mode::Setup => match code {
+                KeyCode::Esc => return true,
+                KeyCode::Backspace => {
+                    self.setup_input.pop();
+                    self.setup_error.clear();
+                }
+                KeyCode::Char(c) => {
+                    self.setup_input.push(c);
+                    self.setup_error.clear();
+                }
+                KeyCode::Enter => {
+                    let path = config::sanitize_path(&self.setup_input);
+                    if path.is_empty() {
+                        self.setup_error = "No path provided.".to_string();
+                    } else {
+                        let p = std::path::Path::new(&path);
+                        if !p.is_dir() {
+                            self.setup_error = format!("Path does not exist: {path}");
+                        } else if !config::is_calibre_library(p) {
+                            self.setup_error =
+                                "Not a valid Calibre library (missing metadata.db).".to_string();
+                        } else {
+                            let cfg = config::Config {
+                                library_path: path.clone(),
+                            };
+                            cfg.save();
+                            let books = scanner::scan_library(p);
+                            let len = books.len();
+                            self.filtered_books = books.clone();
+                            self.all_books = books;
+                            self.scrollbar_state = ScrollbarState::new(len.saturating_sub(1));
+                            self.table_state = TableState::default();
+                            if len > 0 {
+                                self.table_state.select(Some(0));
+                            }
+                            self.mode = Mode::Normal;
+                        }
+                    }
+                }
+                _ => {}
+            },
             Mode::Normal => match code {
                 KeyCode::Char('q') | KeyCode::Esc => return true,
                 KeyCode::Down | KeyCode::Char('s') => self.next(),
@@ -192,8 +259,7 @@ impl App {
                 self.scrollbar_state = self.scrollbar_state.position(idx);
                 self.open_detail();
             }
-        } else if matches!(self.mode, Mode::Detail)
-            && Self::is_in_area(col, row, self.detail_area)
+        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail_area)
         {
             self.focus = Focus::Detail;
         }
@@ -210,8 +276,7 @@ impl App {
             } else {
                 self.next();
             }
-        } else if matches!(self.mode, Mode::Detail)
-            && Self::is_in_area(col, row, self.detail_area)
+        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail_area)
         {
             if up {
                 self.detail_scroll = self.detail_scroll.saturating_sub(1);
@@ -288,12 +353,68 @@ impl App {
                 self.draw_table(frame, cols[0]);
                 self.draw_detail(frame, cols[1]);
             }
+            Mode::Setup => {
+                self.draw_setup(frame);
+                return;
+            }
             _ => {
                 self.draw_table(frame, chunks[0]);
             }
         }
 
         self.draw_status_bar(frame, chunks[1]);
+    }
+
+    fn draw_setup(&self, frame: &mut Frame) {
+        let area = frame.area();
+
+        // Center a box: 60 wide, 7 tall
+        let box_width = 60u16.min(area.width.saturating_sub(4));
+        let box_height = 7u16;
+        let x = area.x + (area.width.saturating_sub(box_width)) / 2;
+        let y = area.y + (area.height.saturating_sub(box_height)) / 2;
+        let box_area = Rect::new(x, y, box_width, box_height);
+
+        let block = Block::default()
+            .title(" Enter Calibre library path ")
+            .borders(Borders::ALL)
+            .border_style(Style::new().fg(Color::LightBlue));
+
+        let inner = block.inner(box_area);
+        frame.render_widget(block, box_area);
+
+        // Input line with cursor
+        let input_line = Line::from(vec![
+            Span::raw(&self.setup_input),
+            Span::styled("█", Style::new().fg(Color::Yellow)),
+        ]);
+        frame.render_widget(Paragraph::new(input_line), inner);
+
+        // Error message below input
+        if !self.setup_error.is_empty() {
+            let err_area = Rect::new(inner.x, inner.y + 2, inner.width, 1);
+            frame.render_widget(
+                Paragraph::new(Span::styled(&self.setup_error, Style::new().fg(Color::Red))),
+                err_area,
+            );
+        }
+
+        // Hint at bottom of box
+        let hint_area = Rect::new(
+            inner.x,
+            inner.y + inner.height.saturating_sub(1),
+            inner.width,
+            1,
+        );
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" confirm  "),
+                Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" quit"),
+            ])),
+            hint_area,
+        );
     }
 
     fn draw_table(&mut self, frame: &mut Frame, area: Rect) {
@@ -513,6 +634,7 @@ impl App {
 
     fn draw_status_bar(&self, frame: &mut Frame, area: Rect) {
         let bar = match self.mode {
+            Mode::Setup => Line::from(""),
             Mode::Search => Line::from(vec![
                 Span::styled(" /", Style::new().fg(Color::Yellow).bold()),
                 Span::raw(&self.search_query),

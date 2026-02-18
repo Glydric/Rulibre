@@ -1,7 +1,6 @@
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
-    process,
 };
 
 use serde::{Deserialize, Serialize};
@@ -11,27 +10,29 @@ pub struct Config {
     pub library_path: String,
 }
 
-pub fn config_path() -> PathBuf {
-    dirs::config_dir()
-        .expect("could not determine config directory")
-        .join("dev.miglio.rulibre")
-        .join("config.toml")
+impl Config {
+    pub fn path() -> PathBuf {
+        dirs::config_dir()
+            .expect("could not determine config directory")
+            .join("dev.miglio.rulibre")
+            .join("config.toml")
+    }
+
+    pub fn load() -> Option<Self> {
+        let path = Self::path();
+        let content = fs::read_to_string(&path).ok()?;
+        toml::from_str(&content).ok()
+    }
+
+    pub fn save(&self) {
+        let path = Self::path();
+        fs::create_dir_all(path.parent().unwrap()).expect("failed to create config directory");
+        let content = toml::to_string_pretty(self).expect("failed to serialize config");
+        fs::write(&path, content).expect("failed to write config file");
+    }
 }
 
-pub fn load_config() -> Option<Config> {
-    let path = config_path();
-    let content = fs::read_to_string(&path).ok()?;
-    toml::from_str(&content).ok()
-}
-
-pub fn save_config(config: &Config) {
-    let path = config_path();
-    fs::create_dir_all(path.parent().unwrap()).expect("failed to create config directory");
-    let content = toml::to_string_pretty(config).expect("failed to serialize config");
-    fs::write(&path, content).expect("failed to write config file");
-}
-
-fn sanitize_path(input: &str) -> String {
+pub fn sanitize_path(input: &str) -> String {
     let trimmed = input.trim();
     let stripped = if (trimmed.starts_with('"') && trimmed.ends_with('"'))
         || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
@@ -53,27 +54,4 @@ fn sanitize_path(input: &str) -> String {
 /// just a really base check of metadata.db
 pub fn is_calibre_library(path: &Path) -> bool {
     path.is_dir() && path.join("metadata.db").is_file()
-}
-
-pub fn prompt_library_path() -> String {
-    eprint!("Enter Calibre library path: ");
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .expect("failed to read input");
-    let path = sanitize_path(&input);
-    if path.is_empty() {
-        eprintln!("No path provided.");
-        process::exit(1);
-    }
-    let p = Path::new(&path);
-    if !p.is_dir() {
-        eprintln!("Path does not exist: {path}");
-        process::exit(1);
-    }
-    if !is_calibre_library(p) {
-        eprintln!("Not a valid Calibre library (missing metadata.db): {path}");
-        process::exit(1);
-    }
-    path
 }
