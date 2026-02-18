@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod metadata;
 mod scanner;
 
 use std::{

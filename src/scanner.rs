@@ -1,10 +1,15 @@
-use std::{fs, path::Path, process};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process,
+};
 
 #[derive(Clone)]
 pub struct Book {
     pub author: String,
     pub title: String,
     pub formats: String,
+    pub path: PathBuf,
 }
 
 // files are automatically ignored
@@ -67,6 +72,7 @@ pub fn scan_library(library_path: &Path) -> Vec<Book> {
                     title,
                     author: author_name.clone(),
                     formats: formats.join(", "),
+                    path: title_entry.path(),
                 });
             }
         }
