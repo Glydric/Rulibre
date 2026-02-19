@@ -1,4 +1,6 @@
 use std::io;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
@@ -8,12 +10,14 @@ use ratatui::{
 };
 
 use rulibre::config;
+use rulibre::device::{DeviceEvent, DeviceState};
 use rulibre::metadata;
 use rulibre::scanner::{self, Book};
 
 use crate::views;
 use crate::views::convert::ConvertState;
 use crate::views::detail::DetailState;
+use crate::views::notification::NotificationState;
 use crate::views::setup::SetupState;
 
 #[derive(PartialEq)]
@@ -43,6 +47,8 @@ pub struct App {
     pub(crate) setup: SetupState,
     pub(crate) detail: DetailState,
     pub(crate) convert: ConvertState,
+    pub(crate) notification: NotificationState,
+    pub(crate) device: DeviceState,
 }
 
 impl App {
@@ -67,6 +73,8 @@ impl App {
                     setup: SetupState::default(),
                     detail: DetailState::default(),
                     convert: ConvertState::default(),
+                    notification: NotificationState::default(),
+                    device: DeviceState::default(),
                 }
             }
             _ => Self {
@@ -81,13 +89,33 @@ impl App {
                 setup: SetupState::default(),
                 detail: DetailState::default(),
                 convert: ConvertState::default(),
+                notification: NotificationState::default(),
+                device: DeviceState::default(),
             },
         }
     }
 
-    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
+    pub fn run(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        device_rx: mpsc::Receiver<DeviceEvent>,
+    ) -> io::Result<()> {
         loop {
             terminal.draw(|frame| self.draw(frame))?;
+
+            // Process device events from background thread
+            while let Ok(ev) = device_rx.try_recv() {
+                let msg = self.device.handle_event(ev);
+                self.notification.set(Ok(msg));
+            }
+
+            // Tick notification auto-clear (~3s at 250ms poll)
+            self.notification.tick();
+
+            // Poll with timeout so we can process device events between frames
+            if !event::poll(Duration::from_millis(250))? {
+                continue;
+            }
 
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -125,6 +153,7 @@ impl App {
                 }
                 KeyCode::Enter => self.open_detail(),
                 KeyCode::Char('c') => views::convert::enter(self),
+                KeyCode::Char('t') => self.send_to_device(),
                 _ => {}
             },
             Mode::Setup => return views::setup::handle_key(self, code),
@@ -149,6 +178,17 @@ impl App {
 
     pub(crate) fn enter_convert(&mut self) {
         views::convert::enter(self);
+    }
+
+    pub(crate) fn send_to_device(&mut self) {
+        let Some(idx) = self.table_state.selected() else {
+            return;
+        };
+        let Some(book) = self.filtered_books.get(idx) else {
+            return;
+        };
+        let result = self.device.send_book(&book.path.clone());
+        self.notification.set(result);
     }
 
     fn handle_click(&mut self, col: u16, row: u16) {
@@ -281,5 +321,6 @@ impl App {
         }
 
         views::table::draw_status_bar(self, frame, chunks[1]);
+        views::notification::draw(self, frame);
     }
 }

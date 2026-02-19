@@ -4,6 +4,9 @@ mod views;
 use std::{
     io::{self, stdout},
     process::Command,
+    sync::mpsc,
+    thread,
+    time::Duration,
 };
 
 use crossterm::{
@@ -12,6 +15,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use rulibre::config;
+use rulibre::device::{self, DeviceEvent};
 
 fn main() -> io::Result<()> {
     if std::env::args().any(|a| a == "--config") {
@@ -32,13 +36,34 @@ fn main() -> io::Result<()> {
     let cfg = config::Config::load();
     let mut app = app::App::new(cfg);
 
+    // Spawn background device detection thread
+    let (device_sender, device_receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let mut was_connected = false;
+        loop {
+            let detected = device::detect_device();
+            match (&detected, was_connected) {
+                (Some(dev), false) => {
+                    let _ = device_sender.send(DeviceEvent::Connected(dev.clone()));
+                    was_connected = true;
+                }
+                (None, true) => {
+                    let _ = device_sender.send(DeviceEvent::Disconnected);
+                    was_connected = false;
+                }
+                _ => {}
+            }
+            thread::sleep(Duration::from_secs(2));
+        }
+    });
+
     // used to have complete control of terminal text
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     stdout().execute(EnableMouseCapture)?;
     let mut terminal = ratatui::init();
 
-    let result = app.run(&mut terminal);
+    let result = app.run(&mut terminal, device_receiver);
 
     ratatui::restore();
     stdout().execute(DisableMouseCapture)?;

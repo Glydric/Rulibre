@@ -179,6 +179,7 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Left | KeyCode::Char('a') => app.focus = Focus::Table,
         KeyCode::Right | KeyCode::Char('d') => app.focus = Focus::Detail,
         KeyCode::Char('c') => app.enter_convert(),
+        KeyCode::Char('t') => app.send_to_device(),
         KeyCode::Down | KeyCode::Char('s') => match app.focus {
             Focus::Table => app.next(),
             Focus::Detail => {

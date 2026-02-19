@@ -12,12 +12,20 @@ use rulibre::scanner;
 
 use crate::app::{App, Mode};
 
-#[derive(Default)]
 pub(crate) struct ConvertState {
     pub(crate) targets: Vec<(String, String)>,
     pub(crate) selected: usize,
-    pub(crate) message: String,
-    pub(crate) is_error: bool,
+    pub(crate) message: Option<Result<String, String>>,
+}
+
+impl Default for ConvertState {
+    fn default() -> Self {
+        Self {
+            targets: Vec::new(),
+            selected: 0,
+            message: None,
+        }
+    }
 }
 
 pub fn draw(app: &App, frame: &mut Frame) {
@@ -52,15 +60,13 @@ pub fn draw(app: &App, frame: &mut Frame) {
 
     if app.convert.targets.is_empty() {
         // Only a message to display (error state)
-        let msg_style = if app.convert.is_error {
-            Style::new().fg(Color::Red)
-        } else {
-            Style::new().fg(Color::Green)
-        };
-        frame.render_widget(
-            Paragraph::new(Span::styled(&app.convert.message, msg_style)),
-            inner,
-        );
+        if let Some(ref result) = app.convert.message {
+            let (msg, style) = match result {
+                Ok(msg) => (msg.as_str(), Style::new().fg(Color::Green)),
+                Err(msg) => (msg.as_str(), Style::new().fg(Color::Red)),
+            };
+            frame.render_widget(Paragraph::new(Span::styled(msg, style)), inner);
+        }
         let hint_area = Rect::new(
             inner.x,
             inner.y + inner.height.saturating_sub(1),
@@ -99,19 +105,15 @@ pub fn draw(app: &App, frame: &mut Frame) {
     frame.render_widget(Paragraph::new(lines), list_area);
 
     // Message below list
-    if !app.convert.message.is_empty() {
+    if let Some(ref result) = app.convert.message {
         let msg_y = inner.y + list_area.height + 1;
         if msg_y < inner.y + inner.height {
-            let msg_style = if app.convert.is_error {
-                Style::new().fg(Color::Red)
-            } else {
-                Style::new().fg(Color::Green)
+            let (msg, style) = match result {
+                Ok(msg) => (msg.as_str(), Style::new().fg(Color::Green)),
+                Err(msg) => (msg.as_str(), Style::new().fg(Color::Red)),
             };
             let msg_area = Rect::new(inner.x, msg_y, inner.width, 1);
-            frame.render_widget(
-                Paragraph::new(Span::styled(&app.convert.message, msg_style)),
-                msg_area,
-            );
+            frame.render_widget(Paragraph::new(Span::styled(msg, style)), msg_area);
         }
     }
 
@@ -138,7 +140,7 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.mode = Mode::Normal;
             app.convert.targets.clear();
-            app.convert.message.clear();
+            app.convert.message = None;
         }
         KeyCode::Down | KeyCode::Char('s') => {
             if !app.convert.targets.is_empty() {
@@ -170,8 +172,7 @@ pub fn enter(app: &mut App) {
 
     let (has_kepubify, has_ebook_convert) = converter::available_backends();
     if !has_kepubify && !has_ebook_convert {
-        app.convert.message = "No conversion tools found (install kepubify or calibre's ebook-convert)".to_string();
-        app.convert.is_error = true;
+        app.convert.message = Some(Err("No conversion tools found (install kepubify or calibre's ebook-convert)".to_string()));
         app.convert.targets.clear();
         app.mode = Mode::Convert;
         return;
@@ -179,8 +180,7 @@ pub fn enter(app: &mut App) {
 
     let targets = converter::target_formats(&book.formats, has_kepubify, has_ebook_convert);
     if targets.is_empty() {
-        app.convert.message = "No formats to convert to".to_string();
-        app.convert.is_error = true;
+        app.convert.message = Some(Err("No formats to convert to".to_string()));
         app.convert.targets.clear();
         app.mode = Mode::Convert;
         return;
@@ -188,8 +188,7 @@ pub fn enter(app: &mut App) {
 
     app.convert.targets = targets;
     app.convert.selected = 0;
-    app.convert.message.clear();
-    app.convert.is_error = false;
+    app.convert.message = None;
     app.mode = Mode::Convert;
 }
 
@@ -209,8 +208,7 @@ pub fn run(app: &mut App) {
     let book_path = book.path.clone();
 
     let Some(source_file) = converter::find_source_file(&book_path) else {
-        app.convert.message = "No suitable source file found".to_string();
-        app.convert.is_error = true;
+        app.convert.message = Some(Err("No suitable source file found".to_string()));
         return;
     };
 
@@ -227,14 +225,12 @@ pub fn run(app: &mut App) {
                     ab.formats = new_formats;
                 }
             }
-            app.convert.message = msg;
-            app.convert.is_error = false;
+            app.convert.message = Some(Ok(msg));
             app.convert.targets.clear();
             app.mode = Mode::Normal;
         }
         Err(err) => {
-            app.convert.message = err;
-            app.convert.is_error = true;
+            app.convert.message = Some(Err(err));
         }
     }
 }

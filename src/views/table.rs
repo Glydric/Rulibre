@@ -82,35 +82,50 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
     );
 }
 
+fn send_hint_spans() -> Vec<Span<'static>> {
+    vec![
+        Span::styled("t", Style::new().fg(Color::Yellow).bold()),
+        Span::raw(" send  "),
+    ]
+}
+
 pub fn draw_status_bar(app: &App, frame: &mut Frame, area: Rect) {
-    let bar = match app.mode {
-        Mode::Setup => Line::from(""),
-        Mode::Search => Line::from(vec![
+    let has_device = app.device.connected.is_some();
+
+    let spans = match app.mode {
+        Mode::Setup => vec![Span::raw("")],
+        Mode::Search => vec![
             Span::styled(" /", Style::new().fg(Color::Yellow).bold()),
             Span::raw(&app.search_query),
             Span::styled("█", Style::new().fg(Color::Yellow)),
-        ]),
-        Mode::Detail => Line::from(vec![
-            Span::styled(" ←", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("→", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" focus  "),
-            Span::styled("w", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" up  "),
-            Span::styled("s", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" down  "),
-            Span::styled("c", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" convert  "),
-            Span::styled("q", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" close"),
-        ]),
-        Mode::Convert => Line::from(vec![
+        ],
+        Mode::Detail => {
+            let mut s = vec![
+                Span::styled(" ←", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("→", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" focus  "),
+                Span::styled("w", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" up  "),
+                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" down  "),
+                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
+            ];
+            if has_device {
+                s.extend(send_hint_spans());
+            }
+            s.push(Span::styled("q", Style::new().fg(Color::Yellow).bold()));
+            s.push(Span::raw("/"));
+            s.push(Span::styled("esc", Style::new().fg(Color::Yellow).bold()));
+            s.push(Span::raw(" close"));
+            s
+        }
+        Mode::Convert => vec![
             Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
             Span::raw("/"),
             Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
@@ -123,27 +138,33 @@ pub fn draw_status_bar(app: &App, frame: &mut Frame, area: Rect) {
             Span::raw(" convert  "),
             Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
             Span::raw(" cancel"),
-        ]),
-        Mode::Normal => Line::from(vec![
-            Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" up  "),
-            Span::styled("s", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" down  "),
-            Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" detail  "),
-            Span::styled("c", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" convert  "),
-            Span::styled("/", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" search  "),
-            Span::styled("q", Style::new().fg(Color::Yellow).bold()),
-            Span::raw("/"),
-            Span::styled("esc", Style::new().fg(Color::Yellow).bold()),
-            Span::raw(" quit"),
-        ]),
+        ],
+        Mode::Normal => {
+            let mut s = vec![
+                Span::styled(" w", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↑", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" up  "),
+                Span::styled("s", Style::new().fg(Color::Yellow).bold()),
+                Span::raw("/"),
+                Span::styled("↓", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" down  "),
+                Span::styled("enter", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" detail  "),
+                Span::styled("c", Style::new().fg(Color::Yellow).bold()),
+                Span::raw(" convert  "),
+            ];
+            if has_device {
+                s.extend(send_hint_spans());
+            }
+            s.push(Span::styled("/", Style::new().fg(Color::Yellow).bold()));
+            s.push(Span::raw(" search  "));
+            s.push(Span::styled("q", Style::new().fg(Color::Yellow).bold()));
+            s.push(Span::raw("/"));
+            s.push(Span::styled("esc", Style::new().fg(Color::Yellow).bold()));
+            s.push(Span::raw(" quit"));
+            s
+        }
     };
 
     let style = match app.mode {
@@ -151,5 +172,5 @@ pub fn draw_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         _ => Style::new().bg(Color::Black),
     };
 
-    frame.render_widget(Paragraph::new(bar).style(style), area);
+    frame.render_widget(Paragraph::new(Line::from(spans)).style(style), area);
 }
