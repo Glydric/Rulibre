@@ -187,7 +187,7 @@ impl App {
         let Some(book) = self.filtered_books.get(idx) else {
             return;
         };
-        let result = self.device.send_book(&book.path.clone());
+        let result = self.device.send_book(&book.path.clone(), &book.author);
         self.notification.set(result);
     }
 
