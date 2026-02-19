@@ -181,13 +181,19 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Char('c') => app.enter_convert(),
         KeyCode::Char('t') => app.send_to_device(),
         KeyCode::Down | KeyCode::Char('s') => match app.focus {
-            Focus::Table => app.next(),
+            Focus::Table => {
+                app.next();
+                app.open_detail();
+            }
             Focus::Detail => {
                 app.detail.scroll = app.detail.scroll.saturating_add(1);
             }
         },
         KeyCode::Up | KeyCode::Char('w') => match app.focus {
-            Focus::Table => app.previous(),
+            Focus::Table => {
+                app.previous();
+                app.open_detail();
+            }
             Focus::Detail => {
                 app.detail.scroll = app.detail.scroll.saturating_sub(1);
             }
