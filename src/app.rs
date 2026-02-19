@@ -8,10 +8,13 @@ use ratatui::{
 };
 
 use rulibre::config;
-use rulibre::metadata::{self, Metadata};
+use rulibre::metadata;
 use rulibre::scanner::{self, Book};
 
 use crate::views;
+use crate::views::convert::ConvertState;
+use crate::views::detail::DetailState;
+use crate::views::setup::SetupState;
 
 #[derive(PartialEq)]
 pub(crate) enum Mode {
@@ -35,17 +38,11 @@ pub struct App {
     pub(crate) scrollbar_state: ScrollbarState,
     pub(crate) mode: Mode,
     pub(crate) search_query: String,
-    pub(crate) detail: Option<Metadata>,
-    pub(crate) detail_scroll: u16,
     pub(crate) focus: Focus,
     pub(crate) table_area: Rect,
-    pub(crate) detail_area: Rect,
-    pub(crate) setup_input: String,
-    pub(crate) setup_error: String,
-    pub(crate) convert_targets: Vec<(String, String)>,
-    pub(crate) convert_selected: usize,
-    pub(crate) convert_message: String,
-    pub(crate) convert_is_error: bool,
+    pub(crate) setup: SetupState,
+    pub(crate) detail: DetailState,
+    pub(crate) convert: ConvertState,
 }
 
 impl App {
@@ -65,17 +62,11 @@ impl App {
                     scrollbar_state: ScrollbarState::new(len.saturating_sub(1)),
                     mode: Mode::Normal,
                     search_query: String::new(),
-                    detail: None,
-                    detail_scroll: 0,
                     focus: Focus::Table,
                     table_area: Rect::default(),
-                    detail_area: Rect::default(),
-                    setup_input: String::new(),
-                    setup_error: String::new(),
-                    convert_targets: Vec::new(),
-                    convert_selected: 0,
-                    convert_message: String::new(),
-                    convert_is_error: false,
+                    setup: SetupState::default(),
+                    detail: DetailState::default(),
+                    convert: ConvertState::default(),
                 }
             }
             _ => Self {
@@ -85,17 +76,11 @@ impl App {
                 scrollbar_state: ScrollbarState::new(0),
                 mode: Mode::Setup,
                 search_query: String::new(),
-                detail: None,
-                detail_scroll: 0,
                 focus: Focus::Table,
                 table_area: Rect::default(),
-                detail_area: Rect::default(),
-                setup_input: String::new(),
-                setup_error: String::new(),
-                convert_targets: Vec::new(),
-                convert_selected: 0,
-                convert_message: String::new(),
-                convert_is_error: false,
+                setup: SetupState::default(),
+                detail: DetailState::default(),
+                convert: ConvertState::default(),
             },
         }
     }
@@ -157,8 +142,8 @@ impl App {
         let Some(book) = self.filtered_books.get(idx) else {
             return;
         };
-        self.detail = metadata::parse_opf(&book.path);
-        self.detail_scroll = 0;
+        self.detail.metadata = metadata::parse_opf(&book.path);
+        self.detail.scroll = 0;
         self.mode = Mode::Detail;
     }
 
@@ -186,7 +171,8 @@ impl App {
                 self.scrollbar_state = self.scrollbar_state.position(idx);
                 self.open_detail();
             }
-        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail_area)
+        } else if matches!(self.mode, Mode::Detail)
+            && Self::is_in_area(col, row, self.detail.area)
         {
             self.focus = Focus::Detail;
         }
@@ -203,12 +189,13 @@ impl App {
             } else {
                 self.next();
             }
-        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail_area)
+        } else if matches!(self.mode, Mode::Detail)
+            && Self::is_in_area(col, row, self.detail.area)
         {
             if up {
-                self.detail_scroll = self.detail_scroll.saturating_sub(1);
+                self.detail.scroll = self.detail.scroll.saturating_sub(1);
             } else {
-                self.detail_scroll = self.detail_scroll.saturating_add(1);
+                self.detail.scroll = self.detail.scroll.saturating_add(1);
             }
         }
     }

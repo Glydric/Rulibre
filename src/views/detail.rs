@@ -7,10 +7,28 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
+use rulibre::metadata::Metadata;
+
 use crate::app::{App, Focus, Mode};
 
+pub(crate) struct DetailState {
+    pub(crate) metadata: Option<Metadata>,
+    pub(crate) scroll: u16,
+    pub(crate) area: Rect,
+}
+
+impl Default for DetailState {
+    fn default() -> Self {
+        Self {
+            metadata: None,
+            scroll: 0,
+            area: Rect::default(),
+        }
+    }
+}
+
 pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
-    app.detail_area = area;
+    app.detail.area = area;
 
     let border_style = if app.focus == Focus::Detail {
         Style::new().fg(Color::LightBlue)
@@ -18,7 +36,7 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
         Style::default()
     };
 
-    let Some(meta) = &app.detail else {
+    let Some(meta) = &app.detail.metadata else {
         let block = Block::default()
             .title(" Detail ")
             .borders(Borders::ALL)
@@ -145,7 +163,7 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((app.detail_scroll, 0));
+        .scroll((app.detail.scroll, 0));
 
     frame.render_widget(paragraph, area);
 }
@@ -154,8 +172,8 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.mode = Mode::Normal;
-            app.detail = None;
-            app.detail_scroll = 0;
+            app.detail.metadata = None;
+            app.detail.scroll = 0;
             app.focus = Focus::Table;
         }
         KeyCode::Left | KeyCode::Char('a') => app.focus = Focus::Table,
@@ -164,13 +182,13 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
         KeyCode::Down | KeyCode::Char('s') => match app.focus {
             Focus::Table => app.next(),
             Focus::Detail => {
-                app.detail_scroll = app.detail_scroll.saturating_add(1);
+                app.detail.scroll = app.detail.scroll.saturating_add(1);
             }
         },
         KeyCode::Up | KeyCode::Char('w') => match app.focus {
             Focus::Table => app.previous(),
             Focus::Detail => {
-                app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                app.detail.scroll = app.detail.scroll.saturating_sub(1);
             }
         },
         KeyCode::Enter => {
@@ -178,8 +196,8 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
                 app.open_detail();
             } else {
                 app.mode = Mode::Normal;
-                app.detail = None;
-                app.detail_scroll = 0;
+                app.detail.metadata = None;
+                app.detail.scroll = 0;
                 app.focus = Focus::Table;
             }
         }

@@ -12,6 +12,12 @@ use rulibre::scanner;
 
 use crate::app::{App, Mode};
 
+#[derive(Default)]
+pub(crate) struct SetupState {
+    pub(crate) input: String,
+    pub(crate) error: String,
+}
+
 pub fn draw(app: &App, frame: &mut Frame) {
     let area = frame.area();
 
@@ -32,16 +38,16 @@ pub fn draw(app: &App, frame: &mut Frame) {
 
     // Input line with cursor
     let input_line = Line::from(vec![
-        Span::raw(&app.setup_input),
+        Span::raw(&app.setup.input),
         Span::styled("█", Style::new().fg(Color::Yellow)),
     ]);
     frame.render_widget(Paragraph::new(input_line), inner);
 
     // Error message below input
-    if !app.setup_error.is_empty() {
+    if !app.setup.error.is_empty() {
         let err_area = Rect::new(inner.x, inner.y + 2, inner.width, 1);
         frame.render_widget(
-            Paragraph::new(Span::styled(&app.setup_error, Style::new().fg(Color::Red))),
+            Paragraph::new(Span::styled(&app.setup.error, Style::new().fg(Color::Red))),
             err_area,
         );
     }
@@ -69,23 +75,23 @@ pub fn handle_key(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Esc => return true,
         KeyCode::Backspace => {
-            app.setup_input.pop();
-            app.setup_error.clear();
+            app.setup.input.pop();
+            app.setup.error.clear();
         }
         KeyCode::Char(c) => {
-            app.setup_input.push(c);
-            app.setup_error.clear();
+            app.setup.input.push(c);
+            app.setup.error.clear();
         }
         KeyCode::Enter => {
-            let path = config::sanitize_path(&app.setup_input);
+            let path = config::sanitize_path(&app.setup.input);
             if path.is_empty() {
-                app.setup_error = "No path provided.".to_string();
+                app.setup.error = "No path provided.".to_string();
             } else {
                 let p = std::path::Path::new(&path);
                 if !p.is_dir() {
-                    app.setup_error = format!("Path does not exist: {path}");
+                    app.setup.error = format!("Path does not exist: {path}");
                 } else if !config::is_calibre_library(p) {
-                    app.setup_error =
+                    app.setup.error =
                         "Not a valid Calibre library (missing metadata.db).".to_string();
                 } else {
                     let cfg = config::Config {
