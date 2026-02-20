@@ -6,22 +6,30 @@ I got tired of Calibre's old, complex interface and its heavy storage footprint.
 
 ## Install
 
+### crates.io
+
+```
+cargo install rulibre
+```
+
+### From source
+
 ```
 cargo install --git https://github.com/Glydric/Rulibre
 ```
 
-To uninstall:
-
-```
-cargo uninstall rulibre
-```
-
-Or clone and install locally:
+Or clone and build locally:
 
 ```
 git clone https://github.com/Glydric/Rulibre.git
 cd Rulibre
 cargo install --path .
+```
+
+### Uninstall
+
+```
+cargo uninstall rulibre
 ```
 
 Then run with:
