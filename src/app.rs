@@ -211,8 +211,7 @@ impl App {
                 self.scrollbar_state = self.scrollbar_state.position(idx);
                 self.open_detail();
             }
-        } else if matches!(self.mode, Mode::Detail)
-            && Self::is_in_area(col, row, self.detail.area)
+        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail.area)
         {
             self.focus = Focus::Detail;
         }
@@ -229,8 +228,7 @@ impl App {
             } else {
                 self.next();
             }
-        } else if matches!(self.mode, Mode::Detail)
-            && Self::is_in_area(col, row, self.detail.area)
+        } else if matches!(self.mode, Mode::Detail) && Self::is_in_area(col, row, self.detail.area)
         {
             if up {
                 self.detail.scroll = self.detail.scroll.saturating_sub(1);

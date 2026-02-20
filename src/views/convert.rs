@@ -2,7 +2,7 @@ use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -144,8 +144,7 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
         }
         KeyCode::Down | KeyCode::Char('s') => {
             if !app.convert.targets.is_empty() {
-                app.convert.selected =
-                    (app.convert.selected + 1) % app.convert.targets.len();
+                app.convert.selected = (app.convert.selected + 1) % app.convert.targets.len();
             }
         }
         KeyCode::Up | KeyCode::Char('w') => {
@@ -172,7 +171,9 @@ pub fn enter(app: &mut App) {
 
     let (has_kepubify, has_ebook_convert) = converter::available_backends();
     if !has_kepubify && !has_ebook_convert {
-        app.convert.message = Some(Err("No conversion tools found (install kepubify or calibre's ebook-convert)".to_string()));
+        app.convert.message = Some(Err(
+            "No conversion tools found (install kepubify or calibre's ebook-convert)".to_string(),
+        ));
         app.convert.targets.clear();
         app.mode = Mode::Convert;
         return;
@@ -220,8 +221,7 @@ pub fn run(app: &mut App) {
                 let book_path_clone = fb.path.clone();
                 fb.formats = new_formats.clone();
                 // Update matching entry in all_books
-                if let Some(ab) = app.all_books.iter_mut().find(|b| b.path == book_path_clone)
-                {
+                if let Some(ab) = app.all_books.iter_mut().find(|b| b.path == book_path_clone) {
                     ab.formats = new_formats;
                 }
             }

@@ -38,9 +38,7 @@ pub fn target_formats(
 
     if has_calibre_convert {
         for &fmt in EBOOK_CONVERT_TARGETS {
-            if !owned.contains(&fmt.to_string())
-                && !targets.iter().any(|(f, _)| f == fmt)
-            {
+            if !owned.contains(&fmt.to_string()) && !targets.iter().any(|(f, _)| f == fmt) {
                 targets.push((fmt.to_string(), "ebook-convert".to_string()));
             }
         }
@@ -91,9 +89,8 @@ pub fn convert(
         .to_string_lossy();
 
     let (has_kepubify, _) = available_backends();
-    let use_kepubify = target_format == "KEPUB"
-        && source_name.to_lowercase().ends_with(".epub")
-        && has_kepubify;
+    let use_kepubify =
+        target_format == "KEPUB" && source_name.to_lowercase().ends_with(".epub") && has_kepubify;
 
     if use_kepubify {
         let output = Command::new("kepubify")

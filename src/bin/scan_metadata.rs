@@ -23,16 +23,16 @@ fn main() {
 
     for book in &books {
         let Some(meta) = metadata::parse_opf(&book.path) else {
-            println!("[MISSING] {} — {} (no metadata.opf)", book.author, book.title);
+            println!(
+                "[MISSING] {} — {} (no metadata.opf)",
+                book.author, book.title
+            );
             books_with_issues += 1;
             continue;
         };
 
         if !meta.unrecognized.is_empty() {
-            println!(
-                "[UNRECOGNIZED] {} — {}:",
-                book.author, book.title
-            );
+            println!("[UNRECOGNIZED] {} — {}:", book.author, book.title);
             for tag in &meta.unrecognized {
                 println!("  - {tag}");
                 all_unrecognized.insert(tag.clone());

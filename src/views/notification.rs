@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -62,11 +62,7 @@ pub fn draw(app: &crate::app::App, frame: &mut Frame) {
 
     frame.render_widget(Clear, box_area);
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            msg,
-            Style::new().fg(color).bold(),
-        )))
-        .block(block),
+        Paragraph::new(Line::from(Span::styled(msg, Style::new().fg(color).bold()))).block(block),
         box_area,
     );
 }
