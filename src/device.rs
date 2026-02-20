@@ -84,26 +84,60 @@ impl Device {
 }
 
 /// Check known mount points for connected e-readers.
+/// Searches platform-specific paths for Kobo and Kindle devices.
 pub fn detect_device() -> Option<Device> {
-    // todo update to be less system dependent
-    let kobo = Path::new("/Volumes/KOBOeReader");
-    if kobo.is_dir() {
-        return Some(Device {
-            kind: DeviceKind::Kobo,
-            mount_point: kobo.to_path_buf(),
-        });
+    for path in mount_points("KOBOeReader") {
+        if path.is_dir() {
+            return Some(Device {
+                kind: DeviceKind::Kobo,
+                mount_point: path,
+            });
+        }
     }
 
-    // todo update to be less system dependent
-    let kindle = Path::new("/Volumes/Kindle");
-    if kindle.is_dir() {
-        return Some(Device {
-            kind: DeviceKind::Kindle,
-            mount_point: kindle.to_path_buf(),
-        });
+    for path in mount_points("Kindle") {
+        if path.is_dir() {
+            return Some(Device {
+                kind: DeviceKind::Kindle,
+                mount_point: path,
+            });
+        }
     }
 
     None
+}
+
+/// Return candidate mount points for a device name across platforms.
+/// Linux: common mount locations
+#[cfg(target_os = "linux")]
+fn mount_points(device_name: &str) -> Vec<PathBuf> {
+    let mut paths = vec![
+        PathBuf::from(format!("/media/{device_name}")),
+        PathBuf::from(format!("/mnt/{device_name}")),
+    ];
+
+    if let Ok(user) = std::env::var("USER") {
+        paths.push(PathBuf::from(format!("/media/{user}/{device_name}")));
+        paths.push(PathBuf::from(format!("/run/media/{user}/{device_name}")));
+    }
+
+    paths
+}
+
+/// Return candidate mount points for a device name across platforms.
+#[cfg(target_os = "macos")]
+fn mount_points(device_name: &str) -> Vec<PathBuf> {
+    vec![PathBuf::from(format!("/Volumes/{device_name}"))]
+}
+
+/// Return candidate mount points for a device name across platforms.
+#[cfg(target_os = "windows")]
+fn mount_points(_: &str) -> Vec<PathBuf> {
+    // todo rewiew
+    (b'D'..=b'Z')
+        .map(|letter| format!("{}:\\", letter as char))
+        .map(PathBuf::from)
+        .collect()
 }
 
 /// Find or create a compatible file for the device.

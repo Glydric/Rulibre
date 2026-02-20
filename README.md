@@ -1,6 +1,6 @@
 # Rulibre
 
-A terminal UI for browsing your [Calibre](https://calibre-ebook.com/) library. Displays books in a searchable table with Author, Title, and Format columns, with a detail panel showing metadata.
+I got tired of Calibre's old, complex interface and its heavy storage footprint. All I really needed was a way to browse my library and transfer books to my e-reader, so I built a lightweight, drop-in replacement that works with your existing Calibre library structure. I also added things I found lacking or too complicated to use in Calibre, like instant book search.
 
 ![Rulibre screenshot](assets/screenshot.png)
 
