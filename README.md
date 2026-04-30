@@ -13,6 +13,7 @@ cargo install rulibre
 rulibre
 ```
 
+This installs the **TUI** (terminal) version — a single, dependency-free binary. The GUI version is source-only (see [Build from source](#build-from-source)).
 
 On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
@@ -51,6 +52,11 @@ Only formats you don't already have are offered. If neither tool is installed, t
 
 ## Build from source
 
+Rulibre ships two frontends from a single workspace:
+
+- **TUI** — the ratatui terminal interface, published on crates.io
+- **GUI** — Tauri 2 + Leptos desktop window (source-only)
+
 ### TUI
 
 ```
@@ -61,6 +67,30 @@ Or run directly from a checkout:
 
 ```
 cargo run -p rulibre
+```
+
+### GUI
+
+Prerequisites:
+
+```
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+cargo install --locked tauri-cli --version "^2"
+```
+
+Development build:
+
+```
+cd crates/rulibre-gui
+cargo tauri dev
+```
+
+Release build:
+
+```
+cd crates/rulibre-gui
+cargo tauri build
 ```
 
 ## Extra tools

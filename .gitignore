@@ -1,3 +1,10 @@
 /target
 .library_test
 .zed
+
+# Tauri build artefacts
+crates/rulibre/gen/
+crates/rulibre-gui/dist/
+
+# WASM build cache
+**/.trunk/

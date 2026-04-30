@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/rulibre",
     "crates/rulibre-core",
+    "crates/rulibre-gui",
 ]
 default-members = ["crates/rulibre-core", "crates/rulibre"]
 

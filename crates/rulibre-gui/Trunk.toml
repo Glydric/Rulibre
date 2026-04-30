@@ -1,0 +1,8 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[[hooks]]
+stage = "build"
+command = "echo"
+command_arguments = ["building rulibre-gui WASM bundle"]
