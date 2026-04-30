@@ -9,16 +9,16 @@ use ratatui::{
     widgets::{ScrollbarState, TableState},
 };
 
-use rulibre::config;
-use rulibre::device::{DeviceEvent, DeviceState};
-use rulibre::metadata;
-use rulibre::scanner::{self, Book};
+use rulibre_core::config;
+use rulibre_core::device::{DeviceEvent, DeviceState};
+use rulibre_core::metadata;
+use rulibre_core::scanner::{self, Book};
 
-use crate::views;
-use crate::views::convert::ConvertState;
-use crate::views::detail::DetailState;
-use crate::views::notification::NotificationState;
-use crate::views::setup::SetupState;
+use super::views;
+use super::views::convert::ConvertState;
+use super::views::detail::DetailState;
+use super::views::notification::NotificationState;
+use super::views::setup::SetupState;
 
 #[derive(PartialEq)]
 pub(crate) enum Mode {

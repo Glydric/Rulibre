@@ -6,25 +6,15 @@ I got tired of Calibre's old, complex interface and its heavy storage footprint.
 
 ## Install
 
-### crates.io
+The easiest way to get Rulibre is from [crates.io](https://crates.io/crates/rulibre):
 
 ```
 cargo install rulibre
+rulibre
 ```
 
-### From source
 
-```
-cargo install --git https://github.com/Glydric/Rulibre
-```
-
-Or clone and build locally:
-
-```
-git clone https://github.com/Glydric/Rulibre.git
-cd Rulibre
-cargo install --path .
-```
+On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
 ### Uninstall
 
@@ -32,22 +22,13 @@ cargo install --path .
 cargo uninstall rulibre
 ```
 
-Then run with:
-
-```
-rulibre
-```
-
-## Configuration
-
-On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
-
 ## Features
 
 - Browse all books in your Calibre library sorted by author and title
 - Search/filter with `/` across author, title, and format
 - Detail panel showing metadata parsed from `metadata.opf` (title, author, publisher, date, language, series, tags, description, identifiers)
 - Convert books between formats (`c` key) using [kepubify](https://pgaskin.net/kepubify/) or Calibre's `ebook-convert`
+- Send books to a connected e-reader (`t` key) — auto-detects Kobo and Kindle mounts
 - Mouse support: click to select books, scroll both panels
 - Keyboard focus switching between table and detail panels
 
@@ -67,6 +48,20 @@ Press `c` on a selected book to convert it to another format. Conversion options
 - **ebook-convert** (Calibre) — used for all other conversions (EPUB, PDF, MOBI, AZW3, KEPUB, DOCX, TXT). Included with [Calibre](https://calibre-ebook.com/)
 
 Only formats you don't already have are offered. If neither tool is installed, the convert dialog will let you know.
+
+## Build from source
+
+### TUI
+
+```
+cargo install --path crates/rulibre
+```
+
+Or run directly from a checkout:
+
+```
+cargo run -p rulibre
+```
 
 ## Extra tools
 

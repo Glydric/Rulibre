@@ -1,0 +1,21 @@
+[package]
+name = "rulibre"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+default-run = "rulibre"
+
+[[bin]]
+name = "rulibre"
+path = "src/main.rs"
+
+[dependencies]
+rulibre-core = { path = "../rulibre-core" }
+ratatui = "0.30"
+crossterm = "0.29"

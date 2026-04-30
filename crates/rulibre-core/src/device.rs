@@ -3,33 +3,32 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::converter;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DeviceKind {
     Kobo,
     Kindle,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Device {
     pub kind: DeviceKind,
     pub mount_point: PathBuf,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum DeviceEvent {
     Connected(Device),
     Disconnected,
 }
 
+#[derive(Default)]
 pub struct DeviceState {
     pub connected: Option<Device>,
-}
-
-impl Default for DeviceState {
-    fn default() -> Self {
-        Self { connected: None }
-    }
 }
 
 impl DeviceState {

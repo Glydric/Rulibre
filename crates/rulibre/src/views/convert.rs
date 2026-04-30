@@ -7,8 +7,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use rulibre::converter;
-use rulibre::scanner;
+use rulibre_core::converter;
+use rulibre_core::scanner;
 
 use crate::app::{App, Mode};
 

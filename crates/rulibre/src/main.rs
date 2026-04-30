@@ -1,38 +1,25 @@
 mod app;
 mod views;
 
-use std::{
-    io::{self, stdout},
-    process::Command,
-    sync::mpsc,
-    thread,
-    time::Duration,
-};
+use std::{io::stdout, sync::mpsc, thread, time::Duration};
 
 use crossterm::{
     ExecutableCommand,
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use rulibre::config;
-use rulibre::device::{self, DeviceEvent};
 
-fn main() -> io::Result<()> {
+use rulibre_core::config;
+use rulibre_core::device::{self, DeviceEvent};
+
+fn main() -> std::io::Result<()> {
     if std::env::args().any(|a| a == "--config") {
-        let config_path = config::Config::path();
-        std::fs::create_dir_all(config_path.parent().unwrap())?;
-        if !config_path.exists() {
-            // Create a default config so the user has something to edit
-            let default = config::Config {
-                library_path: String::new(),
-            };
-            default.save();
-        }
-        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
-        let status = Command::new(&editor).arg(&config_path).status()?;
-        std::process::exit(status.code().unwrap_or(0));
+        return open_config_in_editor();
     }
+    run()
+}
 
+fn run() -> std::io::Result<()> {
     let cfg = config::Config::load();
     let mut app = app::App::new(cfg);
 
@@ -71,4 +58,20 @@ fn main() -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
 
     result
+}
+
+fn open_config_in_editor() -> std::io::Result<()> {
+    let config_path = config::Config::path();
+    std::fs::create_dir_all(config_path.parent().unwrap())?;
+    if !config_path.exists() {
+        let default = config::Config {
+            library_path: String::new(),
+        };
+        default.save();
+    }
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
+    let status = std::process::Command::new(&editor)
+        .arg(&config_path)
+        .status()?;
+    std::process::exit(status.code().unwrap_or(0));
 }

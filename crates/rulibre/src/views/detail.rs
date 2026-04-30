@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-use rulibre::metadata::Metadata;
+use rulibre_core::metadata::Metadata;
 
 use crate::app::{App, Focus, Mode};
 

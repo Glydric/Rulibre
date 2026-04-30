@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, env, path::Path, process};
 
-use rulibre::{metadata, scanner};
+use rulibre_core::{metadata, scanner};
 
 fn main() {
     let args: Vec<String> = env::args().collect();

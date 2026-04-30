@@ -4,7 +4,9 @@ use std::{
     process,
 };
 
-#[derive(Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Book {
     pub author: String,
     pub title: String,
